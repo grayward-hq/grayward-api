@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.model.ScanJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -24,7 +23,6 @@ public class RetryableProcessor implements JobProcessor {
 
     private final JobProcessor delegate;
     private final JedisPooled jedis;
-
     private final String dlqKey;
     private final ObjectMapper mapper;
 
