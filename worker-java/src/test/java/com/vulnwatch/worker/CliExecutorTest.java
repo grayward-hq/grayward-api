@@ -127,7 +127,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("readAndDelete() returns file contents as a string")
-    void readAndDelete_existingFile_returnsContent() throws IOException {
+    void readAndDelete_existingFile_returnsContent() throws Exception {
         Path file = tempDir.resolve("output.json");
         Files.writeString(file, "{\"key\":\"value\"}");
 
@@ -138,7 +138,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("readAndDelete() deletes the file after reading")
-    void readAndDelete_existingFile_fileIsDeletedAfterRead() throws IOException {
+    void readAndDelete_existingFile_fileIsDeletedAfterRead() throws Exception {
         Path file = tempDir.resolve("output.txt");
         Files.writeString(file, "some content");
 
@@ -149,7 +149,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("readAndDelete() handles empty file without throwing")
-    void readAndDelete_emptyFile_returnsEmptyString() throws IOException {
+    void readAndDelete_emptyFile_returnsEmptyString() throws Exception {
         Path file = tempDir.resolve("empty.txt");
         Files.createFile(file);
 
@@ -161,7 +161,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("readAndDelete() handles file with multi-line UTF-8 content")
-    void readAndDelete_multiLineUtf8Content_returnsFullContent() throws IOException {
+    void readAndDelete_multiLineUtf8Content_returnsFullContent() throws Exception {
         String content = "line1\nline2\nüñíçödé\n";
         Path file = tempDir.resolve("unicode.txt");
         Files.writeString(file, content);
@@ -195,7 +195,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("deleteSilently() deletes an existing file without throwing")
-    void deleteSilently_existingFile_fileIsDeleted() throws IOException {
+    void deleteSilently_existingFile_fileIsDeleted() throws Exception {
         Path file = tempDir.resolve("temp.txt");
         Files.createFile(file);
 
@@ -214,7 +214,7 @@ class CliExecutorTest {
 
     @Test
     @DisplayName("deleteSilently() called twice on same path does not throw")
-    void deleteSilently_calledTwiceOnSamePath_doesNotThrow() throws IOException {
+    void deleteSilently_calledTwiceOnSamePath_doesNotThrow() throws Exception {
         Path file = tempDir.resolve("double-delete.txt");
         Files.createFile(file);
 
