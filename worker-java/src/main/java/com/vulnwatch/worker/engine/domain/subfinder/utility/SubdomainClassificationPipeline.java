@@ -3,11 +3,13 @@ package com.vulnwatch.worker.engine.domain.subfinder.utility;
 import com.vulnwatch.worker.engine.domain.subfinder.classifiers.Classifier;
 import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainFindings;
 import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainRecord;
+import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Component
 public class SubdomainClassificationPipeline {
     private final List<Classifier> classifiers;
 

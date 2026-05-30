@@ -4,9 +4,11 @@ import com.vulnwatch.worker.engine.domain.subfinder.classifiers.Classifier;
 import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainFindings;
 import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainRecord;
 import com.vulnwatch.worker.enums.FindingSeverity;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+@Component
 public class SubdomainRiskAggregator {
     public SubdomainFindings aggregate(SubdomainRecord record, List<Classifier> classifiers){
         SubdomainFindings.SubdomainFindingsBuilder builder = SubdomainFindings.builder().record(record);
