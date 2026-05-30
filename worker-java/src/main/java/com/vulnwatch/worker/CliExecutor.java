@@ -3,8 +3,11 @@ package com.vulnwatch.worker;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +19,7 @@ import java.util.concurrent.*;
  */
 @Slf4j
 @RequiredArgsConstructor
+@Component
 public final class CliExecutor {
 
     private final ExecutorService executor;
@@ -34,52 +38,77 @@ public final class CliExecutor {
      *                               the OS fails to start the process
      */
     public void run(List<String> command,
-                           int timeoutSeconds,
-                           boolean allowNonZeroExit) {
+                    int timeoutSeconds,
+                    boolean allowNonZeroExit) throws Exception {
+
         log.debug("Executing: {}", String.join(" ", command));
 
         ProcessBuilder pb = new ProcessBuilder(command);
-        pb.environment().put("PATH", "/usr/local/bin:/usr/bin:/bin");
-        pb.redirectErrorStream(true);       // merge stderr into stdout
+
+        // IMPORTANT: don't override PATH unless you must
+        pb.environment().put("PATH", System.getenv("PATH"));
+
+        pb.redirectErrorStream(true);
 
         Process process;
         try {
             process = pb.start();
+
         } catch (IOException e) {
             throw new CliExecutionException(
                     "Failed to start process: " + command.get(0), e);
         }
 
-        Future<String> stdOutStream = executor.submit(()-> new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+        StringBuilder output = new StringBuilder();
 
-        try{
-            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+        Future<?> readerFuture = executor.submit(() -> {
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
 
-            if(!finished) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+
+            } catch (IOException ignored) {}
+        });
+
+        boolean finished;
+        try {
+            finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+
+            if (!finished) {
                 process.destroyForcibly();
-                stdOutStream.cancel(true);
                 throw new CliTimeoutException(
-                        "Tool timed out after %ds: %s".formatted(timeoutSeconds, command.getFirst())
+                        "Tool timed out after %ds: %s"
+                                .formatted(timeoutSeconds, command.getFirst())
                 );
             }
 
-            String std = stdOutStream.get();
+            // ensure reader finishes too
+            readerFuture.get();
 
-            int exit = process.exitValue();
-            if(exit != 0){
-                String msg = "Tool exited with code %d: %s".formatted(exit, command.getFirst());
-                if(allowNonZeroExit){
-                    log.warn("{} (non-zero exit tolorated - checking output file)", msg);
-                } else {
-                    throw new CliExecutionException(msg, null);
-                }
-            }
-        } catch (InterruptedException |ExecutionException e) {
-            Thread.currentThread().interrupt();
+        } catch (InterruptedException | ExecutionException e) {
             process.destroyForcibly();
-            throw new CliExecutionException("Interrupted while waiting for: " + command.getFirst(), e);
+            Thread.currentThread().interrupt();
+            throw new CliExecutionException(
+                    "Interrupted while waiting for: " + command.getFirst(), e);
         }
 
+        String std = output.toString();
+
+        int exit = process.exitValue();
+
+        if (exit != 0) {
+            String msg = "Tool exited with code %d: %s: %s"
+                    .formatted(exit, command.getFirst(), std);
+
+            if (allowNonZeroExit) {
+                log.warn("{} (non-zero exit tolerated)", msg);
+            } else {
+                throw new CliExecutionException(msg, null);
+            }
+        }
     }
 
     /**
@@ -88,7 +117,7 @@ public final class CliExecutor {
      *
      * @throws CliExecutionException if the file does not exist or cannot be read
      */
-    public String readAndDelete(Path path) {
+    public String readAndDelete(Path path) throws Exception {
         try {
             if (!Files.exists(path)) {
                 throw new CliExecutionException(
@@ -117,11 +146,11 @@ public final class CliExecutor {
 
     // ── Exception types ───────────────────────────────────────────────────────
 
-    public static class CliTimeoutException extends RuntimeException {
+    public static class CliTimeoutException extends Exception {
         public CliTimeoutException(String message) { super(message); }
     }
 
-    public static class CliExecutionException extends RuntimeException {
+    public static class CliExecutionException extends Exception {
         public CliExecutionException(String message, Throwable cause) { super(message, cause); }
     }
 }
