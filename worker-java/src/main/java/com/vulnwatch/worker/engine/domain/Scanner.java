@@ -23,6 +23,6 @@ public interface Scanner {
      * Executes the scan. Must never throw — catch all exceptions internally
      * and return EngineResult.failure(...) so the retry policy handles them.
      */
-    EngineResult scan(ScanJob job);
+    EngineResult scan(ScanJob job) throws Throwable;
 }
 
