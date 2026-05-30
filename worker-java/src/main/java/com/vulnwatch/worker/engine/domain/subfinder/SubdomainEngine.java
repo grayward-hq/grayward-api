@@ -10,6 +10,7 @@ import com.vulnwatch.worker.enums.SurfaceType;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class SubdomainEngine implements Scanner {
 
     private final CliExecutor cliExecutor;
@@ -32,11 +34,13 @@ public class SubdomainEngine implements Scanner {
     @Value("${tools.subfinder.binary:subfinder}")
     private String binary;
 
-    @Override
-    public EngineResult scan(ScanJob job) {
-        String domain = job.domainName();
-        String outputFileName = "/temp/subfinder-%s.json".formatted(job.scanId());
+    @Value("${tools.temp:/Users/mitchelntuen/temp}")
+    private String tempLocation;
 
+    @Override
+    public EngineResult scan(ScanJob job) throws Throwable {
+        String domain = job.domainName();
+        String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
         Path outFile = Path.of(outputFileName);
 
         List<String> command = List.of(
@@ -47,15 +51,15 @@ public class SubdomainEngine implements Scanner {
 
         try {
             cliExecutor.run(command, timeoutSeconds, false);
-            String json = cliExecutor.readAndDelete(outFile);
             List<SubdomainRecord> records = jsonlParser.parse(outFile);
             List<SubdomainFindings> findings = classificationPipeline.process(records);
 
             return EngineResult.success(SurfaceType.SUBDOMAINS, Map.of("findings", findings));
 
 
-        } catch (IOException e) {
-            return EngineResult.failure(SurfaceType.SUBDOMAINS, e.getMessage());
+        } catch (Exception e) {
+            log.error(e.getMessage());
+            throw e;
         }
 
     }
