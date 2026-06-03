@@ -38,18 +38,18 @@ public class DomainsController : ControllerBase
     /// <summary>
     /// Resends the verification token for a previously registered domain.
     /// </summary>
-    /// <param name="request">Domain for which to resend verification token.</param>
+    /// <param name="domainId">Domain for which to resend verification token.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Verification token resent successfully.</response>
     /// <response code="400">Invalid domain or request.</response>
     /// <response code="401">User is not authenticated.</response>
     [Authorize]
-    [HttpPost("resend-token")]
+    [HttpPost("{domainId:guid}/resend-token")]
     public async Task<ActionResult<Result<RegisterDomainResponse>>> ResendToken(
-        RegisterDomainRequest request,
+        Guid domainId,
         CancellationToken ct)
     {
-        var result = await _mediator.Send(new ResendDomainTokenCommand(request.Domain), ct);
+        var result = await _mediator.Send(new ResendDomainTokenCommand(domainId), ct);
         return result.ToHttpResponse(this);
     }
 

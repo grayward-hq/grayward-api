@@ -21,19 +21,18 @@ public class UpdateProfileHandler(
     public async Task<Result<UserProfileDto>> Handle(UpdateProfileCommand cmd, CancellationToken ct)
     {
         var user = await userManager.FindByIdAsync(currentUser.UserId.ToString());
-
         if (user is null)
             return Result<UserProfileDto>.Failure(Error.NotFound("User not found."));
 
-        user.UpdateProfile(cmd.FirstName, cmd.LastName);
+        var newFirstName = cmd.FirstName ?? user.FirstName;
+        var newLastName = cmd.LastName ?? user.LastName;
+
+        user.UpdateProfile(newFirstName, newLastName);
 
         var result = await userManager.UpdateAsync(user);
-
         if (!result.Succeeded)
-        {
-            var error = result.Errors.First().Description;
-            return Result<UserProfileDto>.Failure(Error.Validation(error));
-        }
+            return Result<UserProfileDto>.Failure(
+                Error.Validation(result.Errors.First().Description));
 
         var prefs = await notifPrefs.GetByUserId(currentUser.UserId, ct);
 
@@ -44,16 +43,16 @@ public class UpdateProfileHandler(
         );
 
         return Result<UserProfileDto>.Success(new UserProfileDto(
-            Id:              user.Id,
-            Email:           user.Email!,
-            FirstName:       user.FirstName,
-            LastName:        user.LastName,
+            Id: user.Id,
+            Email: user.Email!,
+            FirstName: user.FirstName,
+            LastName: user.LastName,
             ProfilePictureUrl: user.ProfilePictureUrl,
-            EmailConfirmed:  user.EmailConfirmed,
+            EmailConfirmed: user.EmailConfirmed,
             HasGoogleLinked: !string.IsNullOrWhiteSpace(user.GoogleId),
             NotificationPreferences: prefsDto,
-            CreatedAt:       user.CreatedAt,
-            UpdatedAt:       user.UpdatedAt
+            CreatedAt: user.CreatedAt,
+            UpdatedAt: user.UpdatedAt
         ));
     }
 }

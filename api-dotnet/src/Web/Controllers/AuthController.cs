@@ -64,7 +64,9 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<Result<AuthResponse>>> Login(LoginRequest request)
     {
-        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password));
+        var (ip, ua) = GetRequestContext();
+        var result = await _mediator.Send(
+            new LoginCommand(request.Email, request.Password, ip, ua));
         return result.ToHttpResponse(this);
     }
 
@@ -90,7 +92,8 @@ public class AuthController : ControllerBase
     [HttpPost("google")]
     public async Task<ActionResult<Result<AuthResponse>>> GoogleLogin(GoogleLoginRequest request)
     {
-        var result = await _mediator.Send(new GoogleLoginCommand(request.IdToken));
+        var (ip, ua) = GetRequestContext();
+        var result = await _mediator.Send(new GoogleLoginCommand(request.IdToken, ip, ua));
         return result.ToHttpResponse(this);
     }
 
@@ -127,6 +130,15 @@ public class AuthController : ControllerBase
     {
         var result = await _mediator.Send(new ResetPasswordCommand(request.Email, request.Token, request.NewPassword));
         return result.ToHttpResponse(this);
+    }
+    
+
+    private (string? ip, string? ua) GetRequestContext()
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString()
+              ?? Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        var ua = Request.Headers.UserAgent.ToString();
+        return (ip, ua);
     }
 
     private string? GetClientOrigin()

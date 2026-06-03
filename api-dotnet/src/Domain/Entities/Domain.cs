@@ -30,6 +30,13 @@ public class ScannedDomain : EntityBase
         Touch();
     }
 
+    public void Revoke()
+    {
+        VerificationStatus = VerificationStatus.Revoked;
+        VerificationToken = null;
+        Touch();
+    }
+
     public void RegenerateToken(string newTokenHash)
     {
         if (VerificationStatus == VerificationStatus.Verified)

@@ -34,11 +34,9 @@ public class VerifyDomainHandler(
             return Result<VerifyDomainResponse>.Failure(
                 Error.NotFound("Domain not found."));
 
-        if (record.VerificationStatus != VerificationStatus.Pending)
+        if (record.VerificationStatus == VerificationStatus.Verified)
             return Result<VerifyDomainResponse>.Failure(
-                record.VerificationStatus == VerificationStatus.Verified
-                    ? Error.Conflict("Domain already verified.")
-                    : Error.Conflict("Domain is not pending verification."));
+                Error.Conflict("Domain is already verified."));
 
         if (config.GetValue<bool>("Dns:Lookup"))
         {
@@ -74,22 +72,32 @@ public class VerifyDomainHandler(
         }
 
         record.Verify();
+
         try
         {
-            var defaults = DomainSettings.CreateDefault(cmd.DomainId);
-            await monitoringSettings.AddAsync(defaults, ct);
+            var existing = await monitoringSettings.GetByDomainId(cmd.DomainId, ct);
+
+            if (existing is null)
+            {
+                await monitoringSettings.AddAsync(
+                    DomainSettings.CreateDefault(cmd.DomainId), ct);
+            }
+            else
+            {
+                existing.Enable();
+                existing.RecordOwnershipConfirmed();
+            }
         }
-        catch (Exception ex) when (ex is DbUpdateException || ex is DbUpdateConcurrencyException)
+        catch (Exception ex) when (
+            ex is DbUpdateException or DbUpdateConcurrencyException)
         {
             logger.LogWarning(
-                "DomainSettings already exist for domain {DomainId} — likely created by a concurrent verification request. Exception: {Exception}",
-                cmd.DomainId, ex);
-        
-            // unique constraint violation 
-            // Ignore: settings were created by a concurrent request.  
+                "DomainSettings upsert conflict for {DomainId} — concurrent request",
+                cmd.DomainId);
         }
 
         await domains.SaveChangesAsync(ct);
+        
 
         return Result<VerifyDomainResponse>.Success(
             new VerifyDomainResponse(

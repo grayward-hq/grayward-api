@@ -57,6 +57,20 @@ public class ProfileController : ControllerBase
         return result.ToHttpResponse(this);
     }
 
+    /// <summary>Updates the authenticated user's notification preferences.</summary>
+[HttpPut("notifications")]
+public async Task<ActionResult<Result<NotificationPreferencesDto>>> UpdateNotifications(
+    [FromBody] UpdateNotificationPreferencesRequest request,
+    CancellationToken ct)
+{
+    var result = await _mediator.Send(
+        new UpdateNotificationPreferencesCommand(
+            request.EmailAlerts,
+            request.SlackAlerts,
+            request.PushNotifications), ct);
+    return result.ToHttpResponse(this);
+}
+
     /// <summary>
     /// Deletes the authenticated user's account.
     /// </summary>

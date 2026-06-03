@@ -205,7 +205,6 @@ builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IDomainRepository, DomainRepository>();
 builder.Services.AddScoped<IScanRepository, ScanRepository>();
-builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<LookupClient>(_ =>
@@ -261,6 +260,7 @@ builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
 builder.Services.AddDataProtection()
         .PersistKeysToDbContext<VulnWatchDbContext>()
         .SetApplicationName("VulnWatch");
+builder.Services.AddHostedService<DomainVerificationReaper>();
         
 var corsSettings = builder.Configuration
     .GetSection("Cors")

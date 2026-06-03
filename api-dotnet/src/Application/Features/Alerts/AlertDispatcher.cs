@@ -1,3 +1,4 @@
+using Application.Features.Alerts.DomainOwnershipWarning;
 using Application.Features.Alerts.ScanCompleted;
 using Application.Features.Alerts.SslExpiry;
 using Application.Interfaces;
@@ -5,6 +6,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Domain.Events;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Features.Alerts;
@@ -14,17 +16,20 @@ public class AlertDispatcher
     private readonly IAlertRepository _alerts;
     private readonly INotificationPreferencesRepository _prefs;
     private readonly IDomainSettingsRepository _domainSettings;
+    private readonly IConfiguration _config;
     private readonly ILogger<AlertDispatcher> _logger;
 
     public AlertDispatcher(
         IAlertRepository alerts,
         INotificationPreferencesRepository prefs,
         IDomainSettingsRepository domainSettings,
+        IConfiguration config,
         ILogger<AlertDispatcher> logger)
     {
         _alerts = alerts;
         _prefs = prefs;
         _domainSettings = domainSettings;
+        _config = config;
         _logger = logger;
     }
 
@@ -37,6 +42,9 @@ public class AlertDispatcher
                 break;
             case ScanCompletedEvent e:
                 await HandleScanCompleted(e, ct);
+                break;
+            case DomainOwnershipWarningEvent e:
+                await HandleOwnershipWarning(e, ct);
                 break;
             default:
                 _logger.LogWarning("No handler registered for event type {EventType}",
@@ -113,6 +121,52 @@ public class AlertDispatcher
             }
         }
     }
+
+    private async Task HandleOwnershipWarning(
+        DomainOwnershipWarningEvent e, CancellationToken ct)
+    {
+        var domainSettings = await _domainSettings.GetByDomainId(e.DomainId, ct);
+        var channels = domainSettings is not null
+            ? ResolveDomainChannels(domainSettings.NotificationChannel)
+            : [AlertChannel.Email];
+
+        // Use stage as deduplication key so each stage only alerts once
+        var deduplicationKey = $"ownership-{e.Stage}";
+
+        foreach (var channel in channels)
+        {
+            var alreadyExists = await _alerts.ExistsForToday(
+                e.UserId, AlertType.OwnershipWarning,
+                e.DomainId, channel, deduplicationKey, ct);
+
+            if (alreadyExists) continue;
+
+             var alert = DomainOwnershipWarningAlertFactory.Create(e, channel, _config);
+           
+
+            await _alerts.AddAsync(alert, ct);
+            
+            try
+            {
+                await _alerts.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                _alerts.DetachUnsavedAlerts();
+            }
+        }
+    }
+
+    private static string BuildSubject(DomainOwnershipWarningEvent e) => e.Stage switch
+    {
+        OwnershipWarningStage.Warning =>
+            $"{e.DomainName} — ownership TXT record not found",
+        OwnershipWarningStage.MonitoringPaused =>
+            $"{e.DomainName} — monitoring paused, TXT record still missing",
+        OwnershipWarningStage.Revoked =>
+            $"{e.DomainName} — domain removed due to lost ownership",
+        _ => $"{e.DomainName} — ownership check failed"
+    };
 
     private static List<AlertChannel> ResolveDomainChannels(AlertChannel channel)
     {
