@@ -15,19 +15,19 @@ public enum SurfaceType {
     SSL("Ssl"),
 
     @Schema(description = "HTTP security headers")
-    HTTP_HEADERS("HttpHeaders"),
+    HTTP_HEADERS("HttpHeaders");
 
-    @Schema(description = "Dependency vulnerabilities")
-    DEPENDENCY("Dependency"),
-
-    @Schema(description = "Hardcoded secrets and credentials")
-    SECRETS("Secrets"),
-
-    @Schema(description = "Subdomain discovery")
-    SUBDOMAINS("Subdomains"),
-
-    @Schema(description = "Ports discovery")
-    PORTS("Ports");
+//    @Schema(description = "Dependency vulnerabilities")
+//    DEPENDENCY("Dependency"),
+//
+//    @Schema(description = "Hardcoded secrets and credentials")
+//    SECRETS("Secrets"),
+//
+//    @Schema(description = "Subdomain discovery")
+//    SUBDOMAINS("Subdomains"),
+//
+//    @Schema(description = "Ports discovery")
+//    PORTS("Ports");
 
     private final String label;
 
