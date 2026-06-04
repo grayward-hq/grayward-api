@@ -18,7 +18,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <netty.version>4.1.118.Final</netty.version>
+        <netty.version>4.1.133.Final</netty.version>
         <postgresql.version>42.7.11</postgresql.version>
     </properties>
 
@@ -140,6 +140,12 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
+
+        <!-- MCP SDK - Fixed CVE-2026-35568 (DNS Rebinding Vulnerability) -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-core</artifactId>
+            <version>1.0.0</version>
         </dependency>
     </dependencies>
 

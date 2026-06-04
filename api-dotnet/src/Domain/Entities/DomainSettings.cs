@@ -20,6 +20,8 @@ public class DomainSettings : EntityBase
     public AlertChannel NotificationChannel { get; private set; }
     public DateTime? LastMonitoredAt { get; private set; }
     public DateTime? NextScheduledAt { get; private set; }
+    public DateTime? OwnershipLastConfirmedAt { get; private set; }
+    public DateTime? OwnershipFailedSince { get; private set; }
 
     public ScannedDomain Domain { get; private set; } = default!;
 
@@ -85,11 +87,23 @@ public class DomainSettings : EntityBase
         Touch();
     }
 
-    // Called by the worker after each scan run
     public void RecordMonitoringRun()
     {
         LastMonitoredAt = DateTime.UtcNow;
         NextScheduledAt = DateTime.UtcNow.Add(ScanFrequency.ToTimeSpan());
+        Touch();
+    }
+
+    public void RecordOwnershipConfirmed()
+    {
+        OwnershipLastConfirmedAt = DateTime.UtcNow;
+        OwnershipFailedSince = null;
+        Touch();
+    }
+
+    public void RecordOwnershipCheckFailed()
+    {
+        OwnershipFailedSince ??= DateTime.UtcNow;
         Touch();
     }
 

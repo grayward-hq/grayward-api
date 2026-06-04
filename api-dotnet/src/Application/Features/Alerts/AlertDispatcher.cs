@@ -1,32 +1,25 @@
+using Application.Features.Alerts.DomainOwnershipWarning;
 using Application.Features.Alerts.ScanCompleted;
 using Application.Features.Alerts.SslExpiry;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Events;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Application.Features.Alerts;
 
-public class AlertDispatcher
+public class AlertDispatcher(
+    IAlertRepository alerts,
+    INotificationPreferencesRepository prefs,
+    IDomainSettingsRepository domainSettings,
+    IConfiguration config,
+    ILogger<AlertDispatcher> logger) : AlertHandlerBase(alerts, domainSettings)
 {
-    private readonly IAlertRepository _alerts;
-    private readonly INotificationPreferencesRepository _prefs;
-    private readonly IDomainSettingsRepository _domainSettings;
-    private readonly ILogger<AlertDispatcher> _logger;
-
-    public AlertDispatcher(
-        IAlertRepository alerts,
-        INotificationPreferencesRepository prefs,
-        IDomainSettingsRepository domainSettings,
-        ILogger<AlertDispatcher> logger)
-    {
-        _alerts = alerts;
-        _prefs = prefs;
-        _domainSettings = domainSettings;
-        _logger = logger;
-    }
+    private readonly INotificationPreferencesRepository _prefs = prefs;
+    private readonly IConfiguration _config = config;
+    private readonly ILogger<AlertDispatcher> _logger = logger;
 
     public async Task DispatchAsync(IDomainEvent domainEvent, CancellationToken ct)
     {
@@ -38,6 +31,9 @@ public class AlertDispatcher
             case ScanCompletedEvent e:
                 await HandleScanCompleted(e, ct);
                 break;
+            case DomainOwnershipWarningEvent e:
+                await HandleOwnershipWarning(e, ct);
+                break;
             default:
                 _logger.LogWarning("No handler registered for event type {EventType}",
                     domainEvent.GetType().Name);
@@ -47,16 +43,12 @@ public class AlertDispatcher
 
     private async Task HandleSslExpiry(SslExpiryEvent e, CancellationToken ct)
     {
-        var domainSettings = await _domainSettings.GetByDomainId(e.DomainId, ct);
-        var channels = domainSettings is not null
-            ? ResolveDomainChannels(domainSettings.NotificationChannel)
-            : [AlertChannel.Email];
-
+        var channels = await ResolveChannelsAsync(e.DomainId, ct);
         var deduplicationKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
         foreach (var channel in channels)
         {
-            var alreadyExists = await _alerts.ExistsForToday(
+            var alreadyExists = await Alerts.ExistsForToday(
                 e.UserId, AlertType.SslExpiry, e.DomainId, channel, deduplicationKey, ct);
 
             if (alreadyExists)
@@ -65,31 +57,18 @@ public class AlertDispatcher
             }
 
             var alert = SslExpiryAlertFactory.Create(e, channel);
-            await _alerts.AddAsync(alert, ct);
-
-            try
-            {
-                await _alerts.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
-            {
-                _alerts.DetachUnsavedAlerts();
-            }
+            await SaveAlertGuarded(alert, ct);
         }
     }
 
     private async Task HandleScanCompleted(ScanCompletedEvent e, CancellationToken ct)
     {
-        var domainSettings = await _domainSettings.GetByDomainId(e.DomainId, ct);
-        var channels = domainSettings is not null
-            ? ResolveDomainChannels(domainSettings.NotificationChannel)
-            : [AlertChannel.Email];
-
+        var channels = await ResolveChannelsAsync(e.DomainId, ct);
         var deduplicationKey = e.ScanId.ToString();
 
         foreach (var channel in channels)
         {
-            var alreadyExists = await _alerts.ExistsForToday(
+            var alreadyExists = await Alerts.ExistsForToday(
                 e.UserId, AlertType.ScanCompleted, e.DomainId, channel, deduplicationKey, ct);
 
             if (alreadyExists)
@@ -101,41 +80,31 @@ public class AlertDispatcher
             }
 
             var alert = ScanCompletedAlertFactory.Create(e, channel);
-
-            await _alerts.AddAsync(alert, ct);
-            try
-            {
-                await _alerts.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
-            {
-                _alerts.DetachUnsavedAlerts();
-            }
+            await SaveAlertGuarded(alert, ct);
         }
     }
 
-    private static List<AlertChannel> ResolveDomainChannels(AlertChannel channel)
+    private async Task HandleOwnershipWarning(
+        DomainOwnershipWarningEvent e, CancellationToken ct)
     {
-        var channels = new List<AlertChannel>();
-        if (channel.HasFlag(AlertChannel.Email)) channels.Add(AlertChannel.Email);
-        if (channel.HasFlag(AlertChannel.Slack)) channels.Add(AlertChannel.Slack);
-        if (channel.HasFlag(AlertChannel.Push)) channels.Add(AlertChannel.Push);
-        return channels.Count > 0 ? channels : [AlertChannel.Email];
-    }
+        var channels = await ResolveChannelsAsync(e.DomainId, ct);
 
-    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        var inner = ex.InnerException;
+        // Use stage as deduplication key so each stage only alerts once
+        var deduplicationKey = $"ownership-{e.Stage}";
 
-        if (inner?.GetType().FullName == "Npgsql.PostgresException")
+        foreach (var channel in channels)
         {
-            const string uniqueViolationSqlState = "23505";
-            var sqlState = inner.GetType()
-                .GetProperty("SqlState")?
-                .GetValue(inner) as string;
-            return sqlState == uniqueViolationSqlState;
-        }
+            var alreadyExists = await Alerts.ExistsForToday(
+                e.UserId, AlertType.OwnershipWarning,
+                e.DomainId, channel, deduplicationKey, ct);
 
-        return false;
+            if (alreadyExists) continue;
+
+             var alert = DomainOwnershipWarningAlertFactory.Create(e, channel, _config);
+           
+
+            await SaveAlertGuarded(alert, ct);
+        }
     }
+
 }

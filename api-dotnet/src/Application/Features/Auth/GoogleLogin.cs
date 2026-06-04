@@ -1,3 +1,4 @@
+using Application.Helpers;
 using Application.Features.Auth.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -10,7 +11,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Application.Features.Auth;
 
-public record GoogleLoginCommand(string IdToken) : IRequest<Result<AuthResponse>>;
+public record GoogleLoginCommand(string IdToken, string? IpAddress = null,
+    string? UserAgent = null) : IRequest<Result<AuthResponse>>;
 
 public class GoogleLoginHandler : IRequestHandler<GoogleLoginCommand, Result<AuthResponse>>
 {
@@ -71,12 +73,12 @@ public class GoogleLoginHandler : IRequestHandler<GoogleLoginCommand, Result<Aut
                 if (!string.IsNullOrWhiteSpace(googleUser.Picture))
                 {
                     user.UpdateProfile(user.FirstName, user.LastName, profilePictureUrl: googleUser.Picture);
-                    
-                    var pictureUpdateResult = await _userManager.UpdateAsync(user);  
-                    
-                    if (!pictureUpdateResult.Succeeded)  
-                        return Result<AuthResponse>.Failure(  
-                            Error.Validation(pictureUpdateResult.Errors.First().Description)); 
+
+                    var pictureUpdateResult = await _userManager.UpdateAsync(user);
+
+                    if (!pictureUpdateResult.Succeeded)
+                        return Result<AuthResponse>.Failure(
+                            Error.Validation(pictureUpdateResult.Errors.First().Description));
                 }
 
                 await TryCreateDefaultPrefsAsync(user.Id, ct);
@@ -111,17 +113,25 @@ public class GoogleLoginHandler : IRequestHandler<GoogleLoginCommand, Result<Aut
                     return Result<AuthResponse>.Failure(Error.Validation(updateResult.Errors.First().Description));
             }
         }
-
-        var accessToken = _jwt.GenerateToken(user);
         var refreshToken = _jwt.GenerateRefreshToken();
         var expireDays = int.Parse(_config["Jwt:RefreshTokenExpiryDays"] ?? "7")!;
 
         var refreshTokenExpiryInDays = DateTime.UtcNow.AddDays(expireDays);
 
-        await _refreshTokenRepo.AddAsync(
-            RefreshToken.Create(user.Id, refreshToken, refreshTokenExpiryInDays),
-            ct);
+        var deviceName = DeviceNameParser.Parse(cmd.UserAgent);
+
+        var refreshTokenEntity = RefreshToken.Create(
+                user.Id,
+                refreshToken,
+                refreshTokenExpiryInDays,
+                ip: cmd.IpAddress,
+                deviceName: deviceName,
+                userAgent: cmd.UserAgent);
+
+        await _refreshTokenRepo.AddAsync(refreshTokenEntity, ct);
         await _refreshTokenRepo.SaveChangesAsync(ct);
+
+        var accessToken = _jwt.GenerateToken(user, sessionId: refreshTokenEntity.Id);
 
         return Result<AuthResponse>.Success(AuthResponse.Create(accessToken, refreshToken));
     }

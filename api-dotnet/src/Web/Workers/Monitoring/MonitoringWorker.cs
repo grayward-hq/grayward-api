@@ -11,7 +11,7 @@ public sealed class MonitoringWorker(
 {
     private static readonly TimeSpan IdleInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan BusyInterval = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan MinInterval  = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(15);
     private const int BatchSize = 20; // tune to your expected concurrent domain volume
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -32,9 +32,9 @@ public sealed class MonitoringWorker(
                 logger.LogError(ex, "MonitoringWorker tick failed");
             }
 
-            var delay = processed == 0        ? IdleInterval
+            var delay = processed == 0 ? IdleInterval
                       : processed >= BatchSize ? MinInterval   // batch was full — likely more queued
-                      :                          BusyInterval;
+                      : BusyInterval;
 
             logger.LogDebug(
                 "MonitoringWorker processed {Count} domain(s) — next tick in {Delay}",
@@ -48,15 +48,18 @@ public sealed class MonitoringWorker(
 
     private async Task<int> RunTickAsync(CancellationToken ct)
     {
-        List<Domain.Entities.DomainSettings> due;
+        List<Guid> dueIds;
+
+        // Fetch only the IDs in a short-lived scope
         using (var fetchScope = scopeFactory.CreateScope())
         {
             var settingsRepo = fetchScope.ServiceProvider
                 .GetRequiredService<IDomainSettingsRepository>();
-            due = await settingsRepo.GetDueForScan(DateTime.UtcNow, BatchSize, ct);
+            var due = await settingsRepo.GetDueForScan(DateTime.UtcNow, BatchSize, ct);
+            dueIds = due.Select(s => s.DomainId).ToList();
         }
 
-        if (due.Count == 0)
+        if (dueIds.Count == 0)
         {
             logger.LogDebug("MonitoringWorker tick — no domains due");
             return 0;
@@ -64,21 +67,26 @@ public sealed class MonitoringWorker(
 
         logger.LogInformation(
             "MonitoringWorker tick — {Count} domain(s) due for monitoring",
-            due.Count);
+            dueIds.Count);
 
         var semaphore = new SemaphoreSlim(5);
 
-        var tasks = due.Select(async settings =>
+        var tasks = dueIds.Select(async domainId =>
         {
             await semaphore.WaitAsync(ct);
             try
             {
+                // Each domain gets its own scope — fetch, process, and save all within it
                 using var scope = scopeFactory.CreateScope();
 
-                var settingsRepo  = scope.ServiceProvider.GetRequiredService<IDomainSettingsRepository>();
-                var scanDispatch  = scope.ServiceProvider.GetRequiredService<ScanDispatchService>();
-                var sslCheck      = scope.ServiceProvider.GetRequiredService<SslExpiryCheckService>();
+                var settingsRepo = scope.ServiceProvider.GetRequiredService<IDomainSettingsRepository>();
+                var scanDispatch = scope.ServiceProvider.GetRequiredService<ScanDispatchService>();
+                var sslCheck = scope.ServiceProvider.GetRequiredService<SslExpiryCheckService>();
                 var ownershipCheck = scope.ServiceProvider.GetRequiredService<OwnershipCheckService>();
+
+                // Re-fetch within this scope so SaveChangesAsync tracks the right object
+                var settings = await settingsRepo.GetByDomainId(domainId, ct);
+                if (settings is null) return;
 
                 await ProcessDomainAsync(
                     settings, scanDispatch, sslCheck, ownershipCheck,
@@ -88,7 +96,7 @@ public sealed class MonitoringWorker(
             {
                 logger.LogError(ex,
                     "Error processing domain {DomainId} in monitoring worker",
-                    settings.DomainId);
+                    domainId);
             }
             finally
             {
@@ -97,7 +105,7 @@ public sealed class MonitoringWorker(
         });
 
         await Task.WhenAll(tasks);
-        return due.Count;
+        return dueIds.Count;
     }
 
     private async Task ProcessDomainAsync(
@@ -127,9 +135,9 @@ public sealed class MonitoringWorker(
         settings.RecordMonitoringRun();
         await settingsRepo.SaveChangesAsync(ct);
 
-        logger.LogInformation(
-            "Monitoring scheduled for {Domain} — next run at {Next:u}",
-            domainName, settings.NextScheduledAt);
+        // logger.LogInformation(
+        //     "Monitoring scheduled for {Domain} — next run at {Next:u}",
+        //     domainName, settings.NextScheduledAt);
     }
 
     private async Task RunGuarded(

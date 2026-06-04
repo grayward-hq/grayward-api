@@ -6,39 +6,32 @@ using MediatR;
 
 namespace Application.Features.Domain;
 
-public record ResendDomainTokenCommand(string Domain) : IRequest<Result<RegisterDomainResponse>>;
+public record ResendDomainTokenCommand(Guid DomainId) : IRequest<Result<RegisterDomainResponse>>;
 
-public class ResendDomainTokenHandler : IRequestHandler<ResendDomainTokenCommand, Result<RegisterDomainResponse>>
+
+public class ResendDomainTokenHandler(
+    IDomainRepository domains,
+    ICurrentUser currentUser,
+    ITokenService tokenService)
+    : IRequestHandler<ResendDomainTokenCommand, Result<RegisterDomainResponse>>
 {
-    private readonly IDomainRepository _domains;
-    private readonly ICurrentUser _currentUser;
-    private readonly ITokenService _token;
-
-    public ResendDomainTokenHandler(IDomainRepository domains, ICurrentUser currentUser, ITokenService token)
-    {
-        _domains = domains;
-        _currentUser = currentUser;
-        _token = token;
-    }
 
     public async Task<Result<RegisterDomainResponse>> Handle(ResendDomainTokenCommand cmd, CancellationToken ct)
     {
-        var domain = cmd.Domain.ToLowerInvariant();
+        var domain = await domains.FindUserDomainById(currentUser.UserId, cmd.DomainId, ct);
 
-        var record = await _domains.GetByNameAndUser(domain, _currentUser.UserId, ct);
+        if (domain is null)
+            return Result<RegisterDomainResponse>.Failure(Error.NotFound("Domain not registered."));
 
-        if (record is null)
-            return Result<RegisterDomainResponse>.Failure(Error.NotFound("Domain not registered"));
-
-        if (record.VerificationStatus == VerificationStatus.Verified)
+        if (domain.VerificationStatus == VerificationStatus.Verified)
             return Result<RegisterDomainResponse>.Failure(Error.Validation("Domain is already verified"));
 
-        var (rawToken, tokenHash) = _token.Generate();
+        var (rawToken, tokenHash) = tokenService.Generate();
 
-        record.RegenerateToken(tokenHash);
+        domain.RegenerateToken(tokenHash);
 
-        await _domains.SaveChangesAsync(ct);
+        await domains.SaveChangesAsync(ct);
 
-        return Result<RegisterDomainResponse>.Success(RegisterDomainResponse.Create(rawToken, record));
+        return Result<RegisterDomainResponse>.Success(RegisterDomainResponse.Create(rawToken, domain));
     }
 }

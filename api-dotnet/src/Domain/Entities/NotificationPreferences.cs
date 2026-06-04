@@ -11,11 +11,13 @@ public class NotificationPreferences : EntityBase
 
     private NotificationPreferences() { }
 
-    public static NotificationPreferences Create(Guid userId, bool emailAlerts = true)
+    public static NotificationPreferences Create(Guid userId, bool emailAlerts = true, bool slackAlerts = false, bool pushNotifications = false)
         => new()
         {
             UserId = userId,
             EmailAlerts = emailAlerts,
+            SlackAlerts = slackAlerts,
+            PushNotifications = pushNotifications,
         };
 
     public void Update(bool emailAlerts, bool slackAlerts, bool pushNotifications)
