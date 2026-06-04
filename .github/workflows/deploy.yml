@@ -8,19 +8,23 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  deploy:
+  trivy-scan:
+    name: Trivy Security Scan
     if: github.event.pull_request.merged == true && github.event.repository.fork == false
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
-    env:
-      HOST: ${{ secrets.HOST }}
-      USERNAME: ${{ secrets.USERNAME }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+      - name: Resolve Maven dependencies
+        run: |
+          cd worker-java
+          mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -31,6 +35,21 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+  deploy:
+    name: Deploy
+    if: github.event.pull_request.merged == true && github.event.repository.fork == false
+    needs: [trivy-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
+    env:
+      HOST: ${{ secrets.HOST }}
+      USERNAME: ${{ secrets.USERNAME }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
@@ -113,7 +132,6 @@ jobs:
                 cp -r "$JAR_BACKUP" "$JAR_DIR"
               fi
 
-              # Restart with old versions
               pm2 delete $API_NAME || true
               pm2 delete $WORKER_NAME || true
               pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
