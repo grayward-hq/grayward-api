@@ -22,7 +22,7 @@ namespace Infrastructure.Migrations
                 table: "RefreshTokens",
                 type: "timestamp with time zone",
                 nullable: false,
-                defaultValueSql: "\"CreatedAt\"");
+                defaultValueSql: "NOW()");
 
             migrationBuilder.AddColumn<string>(
                 name: "UserAgent",
