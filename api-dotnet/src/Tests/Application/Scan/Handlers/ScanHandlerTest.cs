@@ -12,7 +12,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.InMemory;
- 
+using Microsoft.Extensions.Configuration;
+
 namespace Tests.Scans.Handlers;
  
 public class StartScanHandlerTests : IDisposable
@@ -22,6 +23,8 @@ public class StartScanHandlerTests : IDisposable
     private readonly Mock<IScanRepository> _scanRepo;
     private readonly Mock<IDomainRepository> _domainRepo;
     private readonly Mock<IRedisService> _redis;
+    private readonly Mock<IConfiguration> _config;
+
     private readonly Mock<ILogger<StartScanHandler>> _logger;
     private readonly StartScanHandler _sut;
     private readonly Guid _userId = Guid.NewGuid();
@@ -42,6 +45,7 @@ public class StartScanHandlerTests : IDisposable
         _scanRepo = new Mock<IScanRepository>();
         _domainRepo = new Mock<IDomainRepository>();
         _redis = new Mock<IRedisService>();
+        _config = new Mock<IConfiguration>();
         _logger = new Mock<ILogger<StartScanHandler>>();
  
         _currentUser.Setup(c => c.UserId).Returns(_userId);
@@ -53,7 +57,7 @@ public class StartScanHandlerTests : IDisposable
  
         _sut = new StartScanHandler(
             _dbContext, _currentUser.Object, _scanRepo.Object,
-            _domainRepo.Object, _redis.Object, _logger.Object);
+            _domainRepo.Object, _redis.Object, _logger.Object, _config.Object);
     }
  
     public void Dispose() => _dbContext.Dispose();

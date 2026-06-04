@@ -73,9 +73,9 @@ public sealed class ScanDispatchService(
             return false;
         }
 
-        logger.LogInformation(
-            "Monitoring scan dispatched for {Domain} — scan {ScanId}",
-            domainName, scan.Id);
+        // logger.LogInformation(
+        //     "Monitoring scan dispatched for {Domain} — scan {ScanId}",
+        //     domainName, scan.Id);
 
         return true;
     }
