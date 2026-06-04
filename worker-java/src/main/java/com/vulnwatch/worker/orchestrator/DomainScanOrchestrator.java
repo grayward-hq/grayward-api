@@ -84,7 +84,7 @@ public class DomainScanOrchestrator {
 
             if (engineResult == null) {
                 log.warn("Surface permanently failed retry attempts [scanId={} surface={}]", scanId, surface.name());
-                return new SurfaceResult(EngineResult.failure(surface.getLabel(), "Scanner exhausted all retries"), null);
+                return new SurfaceResult(EngineResult.failure(surface, "Scanner exhausted all retries"), null);
             }
 
             // Step 2: Execute AI Enrichment via Circuit-Breaker Proxy
@@ -95,7 +95,7 @@ public class DomainScanOrchestrator {
 
         } catch (Exception e) {
             log.error("Uncaught processing failure in surface pipeline [scanId={} surface={}]: {}", scanId, surface.name(), e.getMessage(), e);
-            return new SurfaceResult(EngineResult.failure(surface.getLabel(), "Unexpected pipeline crash: %s".formatted(e.getMessage())), null);
+            return new SurfaceResult(EngineResult.failure(surface, "Unexpected pipeline crash: %s".formatted(e.getMessage())), null);
         }
     }
 
