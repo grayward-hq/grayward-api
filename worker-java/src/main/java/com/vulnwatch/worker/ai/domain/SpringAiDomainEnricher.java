@@ -28,7 +28,7 @@ public class SpringAiDomainEnricher implements AiEnricher {
                     .entity(AiResult.class);
         } catch (Exception e) {
             log.warn("AI enrichment failed [scanId={} surface={}]: {}",
-                    job.scanId(), engineResult.surface(), e.getMessage());
+                    job.scanId(), engineResult.surfaceType().getLabel(), e.getMessage());
             return null;
         }
     }
