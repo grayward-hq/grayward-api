@@ -31,7 +31,7 @@ public class RuleEngine {
     result.put("dnsKeyRecords", context.dnsKeyRecordList());
     result.put("txtRecords", context.txtRecordList());
 
-    for (Rule rule : rules) {
+    for ( Rule rule : rules) {
       findings.addAll(rule.evaluate(context));
     }
     result.put("findings", findings);
