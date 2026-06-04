@@ -3,7 +3,8 @@ package com.vulnwatch.worker.enums;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 
-/** * Severity levels for security findings. Critical/High require immediate attention.
+/**
+ * Severity levels for security findings. Critical/High require immediate attention.
  */
 @Getter
 @Schema(description = "Severity level of a security finding")
@@ -33,13 +34,19 @@ public enum FindingSeverity {
     }
 
     /**
-     * Safely parses a string value (e.g., from an AI model response) into the matching enum constant.
+     * Returns true if this severity is equal to or more severe than the given threshold.
+     * e.g. HIGH.isAtLeast(MEDIUM) → true, LOW.isAtLeast(HIGH) → false
+     */
+    public boolean isAtLeast(FindingSeverity threshold) {
+        return this.deduction >= threshold.deduction;
+    }
+
+    /**
+     * Safely parses a string value (e.g. from an AI model response) into the matching enum constant.
      * Returns NONE as a defensive default if no match is found.
      */
     public static FindingSeverity fromName(String name) {
-        if (name == null) {
-            return NONE;
-        }
+        if (name == null) return NONE;
         for (FindingSeverity severity : values()) {
             if (severity.name.equalsIgnoreCase(name.trim())) {
                 return severity;
