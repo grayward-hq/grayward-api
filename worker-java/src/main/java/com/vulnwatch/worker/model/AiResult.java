@@ -7,8 +7,10 @@ import java.util.List;
  * The AI receives real engine outputs and returns analysis.
  */
 public record AiResult(
-    String severity,            // Critical | High | Medium | Low
-    String explanation,         // natural-language summary for the user
-    List<String> remediationSteps,
-    String cveId                // nullable — only if a known CVE applies
+        String title,
+        String severity,
+        String explanation,
+        String cveId,
+        List<String> remediationSteps,
+        String certExpiry        // populated only for SSL, null otherwise
 ) {}

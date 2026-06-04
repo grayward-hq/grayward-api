@@ -31,15 +31,24 @@ public class PromptBuilder {
 
     public String domainEnrichPrompt(ScanJob job, EngineResult result) {
         return """
-                Domain: %s
-                Scan ID: %s
-                Surface: %s
-                Engine success: %s
-                Technical findings:
-                %s
+            Domain: %s
+            Scan ID: %s
+            Surface: %s
+            Engine success: %s
+            Technical findings:
+            %s
 
-                Analyse these findings and return your assessment.
-                """.formatted(
+            Analyse these findings and return your assessment as JSON with these fields:
+            - title: a single concise sentence summarising the most significant finding
+            - severity: one of Critical, High, Medium, Low, Info
+            - explanation: concise technical explanation of the findings
+            - cveId: CVE identifier if applicable, otherwise null
+            - remediationSteps: list of actionable remediation steps
+            - certExpiry: if surface is SSL, extract the certificate expiry date as an
+              ISO-8601 string (e.g. "2026-01-01T00:00:00Z") from the findings, otherwise null
+
+            Return only valid JSON, no markdown, no preamble.
+            """.formatted(
                 job.domainName(),
                 job.scanId(),
                 result.surfaceType().getLabel(),
