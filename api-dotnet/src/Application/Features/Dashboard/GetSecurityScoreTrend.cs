@@ -5,6 +5,7 @@ using Domain.Enums;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using FluentValidation;
+using System.Globalization;  
 
 namespace Application.Features.Dashboard;
 
@@ -26,12 +27,6 @@ public class GetSecurityScoreTrendHandler(
         var sevenDaysAgo = today.AddDays(-6);
 
         var scans = await scanRepo.GetRecentCompletedScans(userId, sevenDaysAgo, ct);
-        // var scans = await db.Scans
-        //     .Where(s => s.UserId == userId
-        //              && s.Status == ScanStatus.Completed
-        //              && s.CompletedAt >= sevenDaysAgo)
-        //     .Select(s => new { s.CompletedAt, s.SecurityScore })
-        //     .ToListAsync(ct);
 
         // Build a 7-day window, taking the avg score per day
         var result = Enumerable.Range(0, 7)
@@ -42,12 +37,18 @@ public class GetSecurityScoreTrendHandler(
                     .Where(s => s.CompletedAt!.Value.Date == day)
                     .ToList();
 
-                var score = dayScans.Count > 0
-                    ? (int?)Math.Round(dayScans.Average(s => s.SecurityScore ?? 0))
+                var scores = dayScans
+                    .Where(s => s.SecurityScore.HasValue)
+                    .Select(s => s.SecurityScore!.Value)
+                    .ToList();
+
+                var score = scores.Count > 0
+                    ? (int?)Math.Round(scores.Average())
                     : null;
 
+
                 return new SecurityScoreTrendDto(
-                    day.ToString("ddd"), // "Mon", "Tue"...
+                    day.ToString("ddd", CultureInfo.InvariantCulture), // "Mon", "Tue"...
                     score);
             })
             .ToList();
