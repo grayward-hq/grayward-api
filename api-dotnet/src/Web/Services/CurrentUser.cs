@@ -15,7 +15,10 @@ public class CurrentUser : ICurrentUser
         _httpContextAccessor.HttpContext!.User ?? new ClaimsPrincipal();
 
     public Guid UserId =>
-        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : Guid.Empty    ;
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : Guid.Empty;
+
+    public Guid? SessionId =>
+        Guid.TryParse(User.FindFirstValue(AppClaimTypes.SessionId), out var id) ? id : null;
 
     public string? FirstName =>
         NullIfEmpty(User.FindFirstValue(AppClaimTypes.FirstName));

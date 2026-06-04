@@ -13,7 +13,18 @@ public sealed class RefreshTokenRepository(VulnWatchDbContext db)
         Db.RefreshTokens
             .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
     public Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct) =>
+    Db.RefreshTokens
+        .Where(t => t.UserId == userId
+                 && t.RevokedAt == null
+                 && t.ExpiresAt > DateTime.UtcNow)
+        .OrderByDescending(t => t.LastUsedAt)
+        .ToListAsync(ct);
+
+    public Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct) =>
         Db.RefreshTokens
-            .Where(t => t.UserId == userId && t.RevokedAt == null && t.ExpiresAt > DateTime.UtcNow)
-            .ToListAsync(ct);
+            .FirstOrDefaultAsync(t => t.Id == id
+                                   && t.UserId == userId
+                                   && t.RevokedAt == null
+                                   && t.ExpiresAt > DateTime.UtcNow, ct);
+
 }
