@@ -43,7 +43,7 @@ public class SslEngine implements Scanner {
     }
 
     @Override
-    public EngineResult scan(ScanJob job) throws Exception {
+    public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
         String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
 
@@ -61,7 +61,7 @@ public class SslEngine implements Scanner {
             return EngineResult.success(SurfaceType.SSL, Map.of("findings", findings));
         }catch (Exception e){
             log.error("Error performing %s scan for scan_id:%s".formatted(job.scanType(), job.scanId()));
-            throw e;
+            throw new RuntimeException(e);
         }finally {
             cliExecutor.deleteSilently(outFile);
         }

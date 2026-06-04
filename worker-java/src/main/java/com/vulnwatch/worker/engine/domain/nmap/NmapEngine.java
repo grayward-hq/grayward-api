@@ -42,7 +42,7 @@ public class NmapEngine implements Scanner {
     private String tempLocation;
 
     @Override
-    public EngineResult scan(ScanJob job) throws Exception{
+    public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
         String outputFileName = "%s/%s-%s.json".formatted(tempLocation,binary,job.scanId());
         Path outFile = Path.of(outputFileName);
@@ -60,7 +60,7 @@ public class NmapEngine implements Scanner {
             return EngineResult.success(SurfaceType.PORTS, Map.of("findings", findings));
         }catch (Exception e){
             log.error("Error performing %s scan for scan_id:%s".formatted(job.scanType(), job.scanId()));
-            throw e;
+            throw new RuntimeException(e);
         }
     }
 

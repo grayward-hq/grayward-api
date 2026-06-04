@@ -44,7 +44,7 @@ public class DnsEngine implements Scanner {
     }
 
     @Override
-    public EngineResult scan(ScanJob job) throws Throwable{
+    public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
         String outputFileName = "%s/%s-%s.json".formatted(tempLocation,binary,job.scanId());
         System.out.println(outputFileName);
@@ -72,7 +72,7 @@ public class DnsEngine implements Scanner {
             return EngineResult.failure(SurfaceType.DNS, "Error processing: " + outputFileName);
         } catch (Exception e){
             log.error(e.getMessage());
-            throw e;
+            throw new RuntimeException(e);
         }finally {
             cliExecutor.deleteSilently(outFile);
         }

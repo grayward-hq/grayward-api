@@ -38,7 +38,7 @@ public class SubdomainEngine implements Scanner {
     private String tempLocation;
 
     @Override
-    public EngineResult scan(ScanJob job) throws Throwable {
+    public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
         String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
         Path outFile = Path.of(outputFileName);
@@ -59,7 +59,7 @@ public class SubdomainEngine implements Scanner {
 
         } catch (Exception e) {
             log.error(e.getMessage());
-            throw e;
+            throw new RuntimeException(e);
         }
 
     }
