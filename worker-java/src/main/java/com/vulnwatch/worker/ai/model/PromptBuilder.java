@@ -2,14 +2,12 @@ package com.vulnwatch.worker.ai.model;
 
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
-import com.vulnwatch.worker.model.payload.DnsPayload;
-import com.vulnwatch.worker.model.payload.HttpPayload;
-import com.vulnwatch.worker.model.payload.SslPayload;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 public class PromptBuilder {
 
@@ -20,6 +18,15 @@ public class PromptBuilder {
                 or HTTP header probes and return a structured assessment.
                 Be concise, technical, and actionable.
                 """;
+    }
+
+    public String domainDescribePrompt(ScanJob job) {
+        return """
+                Generate a 2-3 sentence plain-English message telling a user that their
+                security scan for domain "%s" (type: %s, scan ID: %s) has started.
+                Mention what kinds of checks will run. Be professional and concise.
+                Do not use bullet points.
+                """.formatted(job.domainName(), job.scanType(), job.scanId());
     }
 
     public String domainEnrichPrompt(ScanJob job, EngineResult result) {
@@ -35,19 +42,12 @@ public class PromptBuilder {
                 """.formatted(
                 job.domainName(),
                 job.scanId(),
-                result.surface(),
+                result.surfaceType().getLabel(),
                 result.success(),
-                formatSurfacePayload(result));
+                result.success() ? result.rawResult() : "Engine failed: %s".formatted(result.errorMessage()));
     }
 
-    public String domainDescribePrompt(ScanJob job) {
-        return """
-                Generate a 2-3 sentence plain-English message telling a user that their
-                security scan for domain "%s" (type: %s, scan ID: %s) has started.
-                Mention what kinds of checks will run. Be professional and concise.
-                Do not use bullet points.
-                """.formatted(job.domainName(), job.scanType(), job.scanId());
-    }
+
 
     public String repositorySystemPrompt() {
         return """
@@ -64,50 +64,5 @@ public class PromptBuilder {
                 Dependencies:
                 %s
                 """.formatted(String.join("\n", dependencies));
-    }
-
-
-
-    private String formatSurfacePayload(EngineResult result) {
-        if (!result.success())
-            return "Engine failed: %s".formatted(result.errorMessage());
-
-        return switch (result.payload()) {
-            case DnsPayload dns -> """
-                    SPF: %s | DMARC: %s | MX: %s
-                    Issues: %s
-                    Raw records:
-                    %s
-                    """.formatted(
-                    dns.hasSPF(), dns.hasDMARC(), dns.hasMX(),
-                    dns.issues().isEmpty() ? "none" : String.join(", ", dns.issues()),
-                    dns.rawRecords().entrySet().stream()
-                            .map(e -> "  %s: %s".formatted(e.getKey(), e.getValue()))
-                            .collect(Collectors.joining("\n")));
-
-            case SslPayload ssl -> """
-                    Protocol: %s | Cipher: %s
-                    Subject: %s | Expiry: %s (%d days)
-                    Self-signed: %s | Expired: %s
-                    Issues: %s
-                    """.formatted(
-                    ssl.protocol(), ssl.cipherSuite(),
-                    ssl.certSubject(), ssl.certExpiry(), ssl.daysUntilExpiry(),
-                    ssl.isSelfSigned(), ssl.isExpired(),
-                    ssl.issues().isEmpty() ? "none" : String.join(", ", ssl.issues()));
-
-            case HttpPayload http -> """
-                    Status: %d | Server: %s
-                    Present headers: %s
-                    Missing headers: %s
-                    Exposed technology: %s
-                    Issues: %s
-                    """.formatted(
-                    http.statusCode(), http.serverHeader(),
-                    http.presentHeaders().isEmpty() ? "none" : String.join(", ", http.presentHeaders()),
-                    http.missingHeaders().isEmpty() ? "none" : String.join(", ", http.missingHeaders()),
-                    http.exposedTechnology() != null ? http.exposedTechnology() : "none",
-                    http.issues().isEmpty() ? "none" : String.join(", ", http.issues()));
-        };
     }
 }
