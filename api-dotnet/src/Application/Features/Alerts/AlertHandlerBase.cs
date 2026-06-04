@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Application.Features.Alerts;
 
-internal abstract class AlertHandlerBase(
+public abstract class AlertHandlerBase(
     IAlertRepository alerts,
     IDomainSettingsRepository domainSettings)
 {

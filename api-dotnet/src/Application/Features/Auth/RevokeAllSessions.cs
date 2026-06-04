@@ -23,11 +23,13 @@ public class RevokeAllOtherSessionsHandler(
     {
         var currentSessionId = currentUser.SessionId;
 
+        if (!currentSessionId.HasValue)  
+            return Result<MessageResponse>.Failure(  
+                Error.Validation("No active session context.")); 
+
         var tokens = await refreshTokenRepo.GetActiveByUserId(currentUser.UserId, ct);
 
-        var toRevoke = currentSessionId.HasValue
-            ? tokens.Where(t => t.Id != currentSessionId.Value).ToList()
-            : tokens;
+        var toRevoke = tokens.Where(t => t.Id != currentSessionId.Value).ToList();
 
         foreach (var token in toRevoke)
             token.Revoke();

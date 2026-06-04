@@ -113,8 +113,6 @@ public class GoogleLoginHandler : IRequestHandler<GoogleLoginCommand, Result<Aut
                     return Result<AuthResponse>.Failure(Error.Validation(updateResult.Errors.First().Description));
             }
         }
-
-        // var accessToken = _jwt.GenerateToken(user);
         var refreshToken = _jwt.GenerateRefreshToken();
         var expireDays = int.Parse(_config["Jwt:RefreshTokenExpiryDays"] ?? "7")!;
 

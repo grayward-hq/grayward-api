@@ -17,7 +17,7 @@ public static class DomainOwnershipWarningAlertFactory
 
         return Alert.Create(
                    userId: e.UserId,
-                   type: AlertType.DomainStatusChanged,
+                   type: AlertType.OwnershipWarning,
                    channel: channel,
                    severity: severity,
                    deduplicationKey: $"ownership-{e.Stage}",
@@ -253,8 +253,9 @@ public static class DomainOwnershipWarningAlertFactory
     private static string BuildRevokedBody(
         DomainOwnershipWarningEvent e, string failingLabel, IConfiguration config)
     {
-        var frontendBase = config["FrontendUrl:Domain"] ?? config["FrontendUrl:Verify"]!
-                                .Replace("/verify", "");
+         var frontendBase = config["FrontendUrl:path"]  
+            ?? config["FrontendUrl:Verify"]?.Replace("/verify", "")  
+            ?? string.Empty; 
         var dashboardUrl = $"{frontendBase}/domain/{e.DomainId}";
 
         return AlertEmailTemplates.Wrap(

@@ -44,7 +44,7 @@ public sealed class DomainVerificationReaper(
 
         var expired = await db.Domains
             .Where(d => d.VerificationStatus == VerificationStatus.Pending
-                     && d.CreatedAt < cutoff)
+                     && d.TokenIssuedAt < cutoff)
             .ToListAsync(ct);
 
         if (expired.Count == 0)

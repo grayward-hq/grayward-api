@@ -135,10 +135,33 @@ public class AuthController : ControllerBase
 
     private (string? ip, string? ua) GetRequestContext()
     {
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString()
-              ?? Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        var ip = GetClientIpAddress();
         var ua = Request.Headers.UserAgent.ToString();
         return (ip, ua);
+    }
+
+    /// <summary>
+    /// Extracts the client IP address from headers, preferring X-Forwarded-For (left-most value)
+    /// over RemoteIpAddress, validating each as a valid IP address.
+    /// </summary>
+    private string? GetClientIpAddress()
+    {
+        // Parse X-Forwarded-For: take left-most comma-separated value
+        var xForwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(xForwardedFor))
+        {
+            var ips = xForwardedFor.Split(',');
+            var clientIp = ips[0].Trim();
+            
+            // Validate that it's a valid IP address
+            if (System.Net.IPAddress.TryParse(clientIp, out _))
+            {
+                return clientIp;
+            }
+        }
+
+        // Fall back to RemoteIpAddress
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     private string? GetClientOrigin()

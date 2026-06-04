@@ -45,7 +45,8 @@ public class LoginHandler(
 
         var refreshToken = jwt.GenerateRefreshToken();
 
-        var refreshTokenExpiryInDays = DateTime.UtcNow.AddMinutes(int.Parse(config["Jwt:RefreshTokenExpiryDays"]!));
+        var expireDays = int.TryParse(config["Jwt:RefreshTokenExpiryDays"], out var d) && d > 0 ? d : 7;  
+        var refreshTokenExpiryInDays = DateTime.UtcNow.AddDays(expireDays); 
 
         var deviceName = DeviceNameParser.Parse(cmd.UserAgent);
 

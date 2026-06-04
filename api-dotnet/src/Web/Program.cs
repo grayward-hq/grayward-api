@@ -17,6 +17,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -286,6 +287,18 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Configure ForwardedHeaders middleware for reverse proxy scenarios
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    // Accept X-Forwarded-For, X-Forwarded-Proto headers
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    
+    // For Azure App Service, Docker behind proxy, etc.
+    // If behind a known proxy, add its IP/network; otherwise clear known proxies to accept all
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.AddAppRateLimiting(builder.Configuration);
 
 builder.Services.AddHealthChecks()
@@ -318,6 +331,7 @@ app.UseSwaggerUI(options =>
     options.RoutePrefix = "docs";
 });
 app.UseHttpsRedirection();
+app.UseForwardedHeaders();
 app.UseCors("DefaultCors");
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();

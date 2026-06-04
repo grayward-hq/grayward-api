@@ -31,7 +31,7 @@ public interface IRefreshTokenRepository : IRepository<RefreshToken>
     Task<RefreshToken?> GetById(Guid id, CancellationToken ct = default);
     Task<RefreshToken?> GetByToken(string rawToken, CancellationToken ct = default);
     Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct = default);
-    Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct);
+    Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct = default);  
 
 }
 

@@ -13,7 +13,7 @@ namespace Web.Workers.Reapers;
 ///
 /// Timeouts:
 ///   Running  — 1 hour  (worker picked it up but never completed)
-///   Queued   — 1 hour  (worker never picked it up, e.g. Redis was down)
+///   Queued   — 5 minutes (worker never picked it up, e.g. Redis was down) 
 /// </summary>
 public class ScanReaperWorker(
     ILogger<ScanReaperWorker> logger,
@@ -51,7 +51,7 @@ public class ScanReaperWorker(
         var runningCutoff = DateTime.UtcNow - RunningTimeout;
         var stalledRunning = await context.Scans
             .Where(s => s.Status == ScanStatus.Running
-                     && s.StartedAt < runningCutoff)
+                     && s.StartedAt == null || s.StartedAt < runningCutoff)
             .ToListAsync(ct);
 
         // Queued scans created more than QueuedTimeout ago (worker never picked them up)

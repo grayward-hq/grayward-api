@@ -13,10 +13,10 @@ public static class DeviceNameParser
         var browser = ua switch
         {
             _ when ua.Contains("Edg/")     => "Edge",
+            _ when ua.Contains("OPR/")     => "Opera",
             _ when ua.Contains("Chrome/")  => "Chrome",
             _ when ua.Contains("Firefox/") => "Firefox",
             _ when ua.Contains("Safari/") && !ua.Contains("Chrome/") => "Safari",
-            _ when ua.Contains("OPR/")     => "Opera",
             _ => "Browser"
         };
 

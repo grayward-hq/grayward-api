@@ -52,7 +52,7 @@ public class RefreshTokenHandler(
 
         var refreshTokenEntity = RefreshToken.Create(
         user.Id, newRefreshToken,
-        DateTime.UtcNow.AddDays(expireDays),
+        refreshTokenExpiryInDays,
         ip: stored.CreatedByIp,
         deviceName: deviceName,
         userAgent: userAgent);

@@ -31,8 +31,9 @@ public class UpdateProfileHandler(
 
         var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded)
-            return Result<UserProfileDto>.Failure(
-                Error.Validation(result.Errors.First().Description));
+            return Result<UserProfileDto>.Failure(  
+                Error.Validation(  
+                    result.Errors.FirstOrDefault()?.Description ?? "Failed to update profile."));  
 
         var prefs = await notifPrefs.GetByUserId(currentUser.UserId, ct);
 

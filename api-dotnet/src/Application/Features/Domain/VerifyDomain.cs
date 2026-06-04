@@ -79,14 +79,17 @@ public class VerifyDomainHandler(
 
             if (existing is null)
             {
-                await monitoringSettings.AddAsync(
-                    DomainSettings.CreateDefault(cmd.DomainId), ct);
+                var settings = DomainSettings.CreateDefault(cmd.DomainId);  
+                settings.RecordOwnershipConfirmed();  
+                await monitoringSettings.AddAsync(settings, ct); 
             }
             else
             {
                 existing.Enable();
                 existing.RecordOwnershipConfirmed();
             }
+
+            await domains.SaveChangesAsync();
         }
         catch (Exception ex) when (
             ex is DbUpdateException or DbUpdateConcurrencyException)
@@ -96,7 +99,6 @@ public class VerifyDomainHandler(
                 cmd.DomainId);
         }
 
-        await domains.SaveChangesAsync(ct);
         
 
         return Result<VerifyDomainResponse>.Success(

@@ -121,6 +121,7 @@ public sealed class OwnershipCheckService(
             domain.DomainName);
 
         domain.Revoke();
+        await settingsRepo.SaveChangesAsync(ct);
 
         await alertDispatcher.DispatchAsync(new DomainOwnershipWarningEvent(
             DomainId:   domain.Id,
