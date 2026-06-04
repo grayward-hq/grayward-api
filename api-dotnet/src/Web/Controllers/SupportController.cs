@@ -20,6 +20,11 @@ public class SupportController : ControllerBase
 
     public SupportController(IMediator mediator) => _mediator = mediator;
 
+    /// <summary>
+    /// Handles user support requests submitted through the contact form.
+    /// </summary>
+    /// <param name="request">The contact form submission.</param>
+    /// <returns>A result indicating the outcome of the request.</returns>
     [HttpPost]
     public async Task<ActionResult<Result<ContactUsResponse>>> ContactUs(ContactUsRequest request)
     {

@@ -5,7 +5,9 @@ namespace Application.Interfaces;
 
 public interface IVulnWatchDbContext
 {
+    DbSet<Alert> Alerts { get; }
     DbSet<ScannedDomain> Domains { get; }
+    DbSet<DomainSettings> DomainSettings { get; }
     DbSet<Scan> Scans { get; }
     DbSet<Finding> Findings { get; }
     // ...only expose what Application needs

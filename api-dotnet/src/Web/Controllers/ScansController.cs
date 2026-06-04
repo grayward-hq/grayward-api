@@ -29,11 +29,15 @@ public class ScansController : ControllerBase
     }
 
     /// <summary>
-    /// Starts a vulnerability scan for a domain.
+    /// Initiates a new vulnerability scan for a domain.
     /// </summary>
-    /// <param name="idempotencyKey">A unique key to prevent duplicate scan requests.</param>
-    /// <param name="body">Scan request payload.</param>
-    /// <returns>The created scan job.</returns>
+    /// <param name="idempotencyKey">
+    /// Unique key used to prevent duplicate scan submissions.
+    /// </param>
+    /// <param name="body">Scan configuration payload.</param>
+    /// <response code="200">Scan successfully started.</response>
+    /// <response code="400">Invalid scan request or duplicate idempotency key.</response>
+    /// <response code="401">User is not authenticated.</response>
     [HttpPost]
     public async Task<ActionResult<Result<StartScanResponse>>> InitiateScan(
         [FromHeader(Name = "Idempotency-Key")] Guid idempotencyKey,
@@ -44,6 +48,15 @@ public class ScansController : ControllerBase
         return result.ToHttpResponse(this);
     }
 
+    /// <summary>
+    /// Retrieves the scan history for a specific domain.
+    /// </summary>
+    /// <param name="domainId">Domain identifier (GUID).</param>
+    /// <param name="request">Scan history query parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns the scan history.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="404">Domain not found.</response>
     [HttpGet("{domainId:guid}/history")]
     public async Task<ActionResult<Result<PagedResult<ScanSummary>>>> GetScanHistory(Guid domainId, [FromQuery] GetScanHistoryRequest request, CancellationToken ct)
     {
@@ -55,6 +68,14 @@ public class ScansController : ControllerBase
 
     }
 
+    /// <summary> 
+    /// Retrieves the detailed report for a specific scan.
+    /// </summary>
+    /// <param name="scanId">Scan identifier (GUID).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns the scan report.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="404">Scan not found.</response>
     [HttpGet("{scanId:guid}/report")]
     public async Task<ActionResult<Result<ScanReportDto>>> GetReport(Guid scanId, CancellationToken ct)
     {

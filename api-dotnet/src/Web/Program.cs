@@ -1,35 +1,38 @@
+using Application.Behaviours;
+using Application.Features.Alerts;
+using Application.Features.Alerts.SslExpiry;
 using Application.Features.Auth;
 using Application.Features.Scans;
+using Application.Helpers;
 using Application.Interfaces;
+using DnsClient;
 using Domain.Entities;
 using FluentValidation;
 using Infrastructure.Persistence;
 using Infrastructure.Persistence.Repositories;
 using Infrastructure.Redis;
 using Infrastructure.Services;
-using Application.Helpers;
+using Infrastructure.Services.Chat;
+using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using StackExchange.Redis;
 using System.Text;
 using System.Text.Json.Serialization;
+using Web.Configurations;
+using Web.Consumers;
 using Web.Extensions;
+using Web.Hubs;
 using Web.Middleware;
 using Web.Services;
-using MediatR;
-using Application.Behaviours;
-using DnsClient;
-using Web.Configurations;
-using Web.Hubs;
-using Serilog;
-using Web.Workers;
 using Web.Workers.Alerts;
-using Web.Consumers;
-using Application.Features.Alerts;
-using Application.Features.Alerts.SslExpiry;
+using Web.Workers.Monitoring;
+using Web.Workers.Reapers;
 
 LoadDotEnv();
 
@@ -221,14 +224,44 @@ builder.Services.AddSingleton<LookupClient>(_ =>
 builder.Services.AddScoped<IDnsResolver, DnsResolver>();
 builder.Services.AddScoped<SslExpiryChecker>();
 builder.Services.AddSignalR();
-// builder.Services.AddHostedService<ScanResultConsumer>();
 builder.Services.AddHostedService<DomainIntelConsumer>();
+builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddHostedService<AlertOutboxProcessor>();
 builder.Services.AddScoped<AlertDispatcher>();
-builder.Services.AddHostedService<SslExpiryWorker>();
+builder.Services.AddScoped<ScanDispatchService>();
+builder.Services.AddScoped<SslExpiryCheckService>();
+builder.Services.AddScoped<OwnershipCheckService>();
+builder.Services.AddHostedService<MonitoringWorker>();
+builder.Services.AddHostedService<ScanReaperWorker>();
 builder.Services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
+builder.Services.AddScoped<IDomainSettingsRepository, DomainSettingsRepository>();
+builder.Services.AddHttpClient("anthropic");  // base URL set per-request in the service
+builder.Services.AddHttpClient("gemini");     // base URL set per-request in the service
+builder.Services
+        .AddHttpClient("openai", client =>
+        {
+            // Works for both OpenAI and Groq — base URL differs by key config
+            var baseUrl = builder.Configuration["Chat:OpenAi:BaseUrl"] ?? "https://api.openai.com";
+            var apiKey  = builder.Configuration["Chat:OpenAi:ApiKey"] ?? "";
 
+            client.BaseAddress = new Uri(baseUrl);
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        });
+builder.Services.AddScoped<AnthropicChatService>();
+builder.Services.AddScoped<GeminiChatService>();
+builder.Services.AddScoped<OpenAiChatService>();
+builder.Services.AddScoped<IChatServiceFactory, ChatServiceFactory>();
+builder.Services.AddScoped<IChatService>(sp =>
+        sp.GetRequiredService<IChatServiceFactory>().Resolve());
+
+builder.Services.AddHttpClient("slack");
+builder.Services.AddScoped<ISlackService, SlackService>();
+builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
+builder.Services.AddDataProtection()
+        .PersistKeysToDbContext<VulnWatchDbContext>()
+        .SetApplicationName("VulnWatch");
+        
 var corsSettings = builder.Configuration
     .GetSection("Cors")
     .Get<CorsOptions>();

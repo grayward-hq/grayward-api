@@ -133,7 +133,7 @@ public class AuthControllerTests : IClassFixture<VulnWatchWebAppFactory>
     // POST /api/auth/resend ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task POST_auth_resend_UnknownEmail_Returns200()  
+    public async Task POST_auth_resend_UnknownEmail_Returns200()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/resend", new
         {
@@ -141,6 +141,76 @@ public class AuthControllerTests : IClassFixture<VulnWatchWebAppFactory>
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // src/Tests/Web/AuthIntegrationTests.cs — add to AuthControllerTests
+
+    [Fact]
+    public async Task POST_auth_refreshToken_ValidToken_Returns200WithNewTokens()
+    {
+        var email = $"refresh_{Guid.NewGuid():N}@example.com";
+        var password = "P@ssw0rd123!";
+
+        // Login to get a real refresh token
+        var (_, _) = await _factory.CreateAuthenticatedUserAsync(email, password);
+        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
+            new { email, password });
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var refreshToken = loginBody
+            .GetProperty("value")
+            .GetProperty("refreshToken")
+            .GetString();
+
+        var response = await _client.PostAsJsonAsync("/api/auth/refresh-token",
+            new { refreshToken });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.GetProperty("value").GetProperty("accessToken").GetString()
+            .Should().NotBeNullOrWhiteSpace();
+        body.GetProperty("value").GetProperty("refreshToken").GetString()
+            .Should().NotBe(refreshToken); // rotation — new token issued
+    }
+
+    [Fact]
+    public async Task POST_auth_refreshToken_InvalidToken_Returns401()
+    {
+        var response = await _client.PostAsJsonAsync("/api/auth/refresh-token",
+            new { refreshToken = "not-a-real-token" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task POST_auth_refreshToken_ReusedToken_Returns401()
+    {
+        var email = $"reuse_{Guid.NewGuid():N}@example.com";
+        var password = "P@ssw0rd123!";
+
+        var (_, _) = await _factory.CreateAuthenticatedUserAsync(email, password);
+        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
+            new { email, password });
+        
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var refreshToken = loginBody
+            .GetProperty("value")
+            .GetProperty("refreshToken")
+            .GetString();
+
+        refreshToken.Should().NotBeNullOrWhiteSpace();
+
+        // Use it once — succeeds
+        var first = await _client.PostAsJsonAsync("/api/auth/refresh-token",
+            new { refreshToken });
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Use it again — should fail because it was rotated
+        var second = await _client.PostAsJsonAsync("/api/auth/refresh-token",
+            new { refreshToken });
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     // POST /api/auth/forgot-password ─────────────────────────────────────────

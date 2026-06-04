@@ -23,12 +23,17 @@ public class JwtService : IJwtService
     public string GenerateToken(User user)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:SecretKey"]!));
-        var expireMinutes = int.Parse(_config["Jwt:ExpireInMinute"] ?? "60")!;
+        
+        var expireMinutesRaw = _config["Jwt:ExpireInMinute"];
+        var expireMinutes = int.TryParse(expireMinutesRaw, out var minutes) && minutes > 0 ? minutes : 60;
 
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Email, user.Email!)
+            new Claim(ClaimTypes.Email,          user.Email!),
+            new Claim(AppClaimTypes.FirstName, user.FirstName ?? string.Empty),
+            new Claim(AppClaimTypes.LastName,  user.LastName ?? string.Empty),
+            new Claim(AppClaimTypes.Picture,   user.ProfilePictureUrl ?? string.Empty),
         };
 
         var token = new JwtSecurityToken(
@@ -71,17 +76,18 @@ public class JwtService : IJwtService
         try
         {
             var principal = handler.ValidateToken(token, validationParams, out _);
-
-            var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier)
-                         ?? principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
-            var email = principal.FindFirstValue(ClaimTypes.Email)
-                         ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
+            var userId    = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            var email     = principal.FindFirstValue(ClaimTypes.Email);
+            var firstName = principal.FindFirstValue(AppClaimTypes.FirstName);
+            var lastName  = principal.FindFirstValue(AppClaimTypes.LastName);
+            var picture   = principal.FindFirstValue(AppClaimTypes.Picture);
             var role = principal.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
 
-            if (userId is null || email is null)
+            if (userId is null || email is null || !Guid.TryParse(userId, out var parsedUserId))
                 return Result<TokenClaims>.Failure(Error.Unauthorized("Token is invalid"));
 
-            return Result<TokenClaims>.Success(new TokenClaims(Guid.Parse(userId), email));
+            return Result<TokenClaims>.Success(new TokenClaims(
+                parsedUserId, email, firstName, lastName, picture));
         }
         catch (SecurityTokenMalformedException)
         {
@@ -96,6 +102,15 @@ public class JwtService : IJwtService
             return Result<TokenClaims>.Failure(Error.Unauthorized("Token is invalid."));
         }
     }
+}
+
+public static class AppClaimTypes
+{
+    public const string UserId = "userId";
+    public const string Email = "email";
+    public const string FirstName = "firstName";
+    public const string LastName = "lastName";
+    public const string Picture = "picture";
 }
 
 

@@ -162,7 +162,7 @@ public class DomainControllerTests : IClassFixture<VulnWatchWebAppFactory>
     public async Task POST_domains_ResendToken_Unauthenticated_Returns401()
     {
         var client   = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/domains/resendtoken", new { domainId = Guid.NewGuid() });
+        var response = await client.PostAsJsonAsync("/api/domains/resend-token", new { domainId = Guid.NewGuid() });
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }

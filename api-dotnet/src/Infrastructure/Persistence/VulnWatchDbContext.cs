@@ -1,13 +1,17 @@
+using System.Text.Json;
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence;
 
-public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>, IVulnWatchDbContext
+public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>, IVulnWatchDbContext, IDataProtectionKeyContext
 {
     public VulnWatchDbContext(DbContextOptions<VulnWatchDbContext> options)
         : base(options) { }
@@ -24,6 +28,8 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
     public DbSet<WebHookOutBox> WebHookOutBox => Set<WebHookOutBox>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<DomainSettings> DomainSettings => Set<DomainSettings>();
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -78,6 +84,35 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .HasDatabaseName("IX_ScannedDomains_Verified_SslCertExpiry");
         });
 
+        builder.Entity<DomainSettings>(e =>
+        {
+            e.HasKey(s => s.Id);
+
+            e.Property(s => s.ScanFrequency).HasConversion<string>();
+            e.Property(s => s.NotificationChannel).HasConversion<int>();
+
+            // Store thresholds as a plain string column — no JSON needed
+            e.Property(s => s.SslAlertThresholds)
+                .HasColumnName("SslAlertThresholds")
+                .HasMaxLength(50)
+                .IsRequired();
+
+            e.HasOne(s => s.Domain)
+                .WithOne()
+                .HasForeignKey<DomainSettings>(s => s.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One settings row per domain — enforced at DB level
+            e.HasIndex(s => s.DomainId)
+                .IsUnique()
+                .HasDatabaseName("IX_DomainSettings_DomainId");
+
+            // Worker query — find everything due for scanning
+            e.HasIndex(s => new { s.MonitoringEnabled, s.NextScheduledAt })
+                .HasDatabaseName("IX_DomainSettings_DueForScan")
+                .HasFilter("\"MonitoringEnabled\" = true");
+        });
+
         builder.Entity<Scan>(e =>
         {
             e.HasIndex(s => s.IdempotencyKey).IsUnique();
@@ -129,12 +164,35 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
         builder.Entity<Integration>(e =>
         {
             e.Property(i => i.Status).HasConversion<string>();
+            e.Property(i => i.Provider).HasConversion<string>();
             e.HasOne(i => i.User)
              .WithMany()
              .HasForeignKey(i => i.UserId)
              .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(i => new { i.UserId, i.Status })
              .HasDatabaseName("IX_Integrations_UserId_Status");
+
+            var converter = new ValueConverter<Dictionary<string, string>, string>(
+                v => v == null || v.Count == 0
+                    ? "{}"
+                    : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new Dictionary<string, string>()
+                    : TryDeserialize(v));
+
+            var comparer = new ValueComparer<Dictionary<string, string>>(
+                (a, b) => JsonSerializer.Serialize(a ?? new(), (JsonSerializerOptions?)null) ==
+                        JsonSerializer.Serialize(b ?? new(), (JsonSerializerOptions?)null),
+                v => v == null
+                    ? 0
+                    : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
+                v => v == null
+                    ? new Dictionary<string, string>()
+                    : TryDeserialize(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null)));
+
+            e.Property(x => x.Metadata)
+                .HasColumnType("jsonb")
+                .HasConversion(converter, comparer);
         });
 
         builder.Entity<MonitoredRepository>(e =>
@@ -170,23 +228,32 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
 
         builder.Entity<Alert>(e =>
         {
-            e.HasIndex(a => new { a.UserId, a.Type, a.DomainId, a.DeduplicationKey })
-            .IsUnique()
-            .HasDatabaseName("IX_Alerts_Deduplication");
+            e.HasIndex(a => new { a.UserId, a.Type, a.DomainId, a.Channel, a.DeduplicationKey })
+                .IsUnique()
+                .HasDatabaseName("IX_Alerts_Deduplication");
 
-            e.Property(a => a.Status)
-            .HasConversion<string>();
-        
-            e.HasIndex(a => new { a.UserId, a.Type, a.DomainId, a.DeduplicationKey })
-            .IsUnique()
-            .HasDatabaseName("IX_Alerts_Deduplication");
-        
+            e.Property(a => a.Status).HasConversion<string>();
+
             e.HasIndex(a => new { a.UserId, a.CreatedAt })
             .HasDatabaseName("IX_Alerts_UserId_CreatedAt");
-        
+
             e.HasIndex(a => new { a.Channel, a.CreatedAt })
             .HasFilter("\"Status\" = 'Pending'")
             .HasDatabaseName("IX_Alerts_Pending_Channel_CreatedAt");
         });
+    }
+
+    private static Dictionary<string, string> TryDeserialize(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json, (JsonSerializerOptions?)null)
+                ?? new();
+        }
+        catch (JsonException)
+        {
+            return new();
+        }
     }
 }

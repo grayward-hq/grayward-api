@@ -29,6 +29,12 @@ public class ProfileController : ControllerBase
         _mediator = mediator;
     }
 
+    /// <summary>
+    /// Retrieves the authenticated user's profile information.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns user profile data.</response>
+    /// <response code="401">User is not authenticated.</response>
     [HttpGet]
     public async Task<ActionResult<Result<UserProfileDto>>> GetProfile(CancellationToken ct)
     {
@@ -36,6 +42,13 @@ public class ProfileController : ControllerBase
         return result.ToHttpResponse(this);
     }
 
+    /// <summary>
+    /// Updates the authenticated user's profile information.
+    /// </summary>
+    /// <param name="request">The updated profile information.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns the updated user profile data.</response>
+    /// <response code="401">User is not authenticated.</response>
     [HttpPut]
     public async Task<ActionResult<Result<UserProfileDto>>> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken ct)
     {
@@ -44,6 +57,12 @@ public class ProfileController : ControllerBase
         return result.ToHttpResponse(this);
     }
 
+    /// <summary>
+    /// Deletes the authenticated user's account.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns a success message.</response>
+    /// <response code="401">User is not authenticated.</response>
     [HttpDelete]
     public async Task<ActionResult<Result<MessageResponse>>> DeleteAccount(CancellationToken ct)
     {
