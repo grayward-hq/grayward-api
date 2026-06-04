@@ -128,7 +128,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
                 $"User '{email}' was created successfully but could not be retrieved.");
         }
         
-        var token = jwtService.GenerateToken(created!);
+        var token = jwtService.GenerateToken(created!, sessionId: null);
 
         return (created!, token);
     }

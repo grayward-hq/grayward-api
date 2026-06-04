@@ -12,6 +12,7 @@ public sealed class DomainSettingsRepository(VulnWatchDbContext db)
     public Task<DomainSettings?> GetByDomainId(
         Guid domainId, CancellationToken ct) =>
         Db.DomainSettings
+            .Include(s => s.Domain)
             .FirstOrDefaultAsync(s => s.DomainId == domainId, ct);
 
     public Task<List<DomainSettings>> GetDueForScan(

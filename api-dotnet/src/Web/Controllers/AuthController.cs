@@ -64,7 +64,9 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<Result<AuthResponse>>> Login(LoginRequest request)
     {
-        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password));
+        var (ip, ua) = GetRequestContext();
+        var result = await _mediator.Send(
+            new LoginCommand(request.Email, request.Password, ip, ua));
         return result.ToHttpResponse(this);
     }
 
@@ -90,7 +92,8 @@ public class AuthController : ControllerBase
     [HttpPost("google")]
     public async Task<ActionResult<Result<AuthResponse>>> GoogleLogin(GoogleLoginRequest request)
     {
-        var result = await _mediator.Send(new GoogleLoginCommand(request.IdToken));
+        var (ip, ua) = GetRequestContext();
+        var result = await _mediator.Send(new GoogleLoginCommand(request.IdToken, ip, ua));
         return result.ToHttpResponse(this);
     }
 
@@ -127,6 +130,38 @@ public class AuthController : ControllerBase
     {
         var result = await _mediator.Send(new ResetPasswordCommand(request.Email, request.Token, request.NewPassword));
         return result.ToHttpResponse(this);
+    }
+    
+
+    private (string? ip, string? ua) GetRequestContext()
+    {
+        var ip = GetClientIpAddress();
+        var ua = Request.Headers.UserAgent.ToString();
+        return (ip, ua);
+    }
+
+    /// <summary>
+    /// Extracts the client IP address from headers, preferring X-Forwarded-For (left-most value)
+    /// over RemoteIpAddress, validating each as a valid IP address.
+    /// </summary>
+    private string? GetClientIpAddress()
+    {
+        // Parse X-Forwarded-For: take left-most comma-separated value
+        var xForwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(xForwardedFor))
+        {
+            var ips = xForwardedFor.Split(',');
+            var clientIp = ips[0].Trim();
+            
+            // Validate that it's a valid IP address
+            if (System.Net.IPAddress.TryParse(clientIp, out _))
+            {
+                return clientIp;
+            }
+        }
+
+        // Fall back to RemoteIpAddress
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     private string? GetClientOrigin()

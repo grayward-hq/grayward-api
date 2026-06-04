@@ -121,7 +121,7 @@ public class LoginHandlerTests
         var user = Fakes.TestUser();
         _userManager.Setup(m => m.FindByEmailAsync(user.Email!)).ReturnsAsync(user);
         _userManager.Setup(m => m.CheckPasswordAsync(user, "P@ssw0rd!")).ReturnsAsync(true);
-        _jwt.Setup(j => j.GenerateToken(user)).Returns("access_token");
+        _jwt.Setup(j => j.GenerateToken(user, It.IsAny<Guid?>())).Returns("access_token");
         _jwt.Setup(j => j.GenerateRefreshToken()).Returns("refresh_token");
         _refreshTokenRepo.Setup(r => r.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
