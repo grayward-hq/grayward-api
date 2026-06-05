@@ -80,7 +80,8 @@ public class SecurityMisconfigDnsRule implements OWASPMappingRule {
      * Validates that the finding title is non-null and exists in the designated filter collection.
      */
     private boolean matchesTitle(String title, Set<String> targetTitles) {
-        if (title == null) return false;
+        if (title == null)
+            return false;
         return targetTitles.contains(title);
     }
 }
