@@ -19,7 +19,16 @@ public record DashboardSummaryDto(
     SslUrgentDto? MostUrgentSsl,  // the domain with fewest days remaining
 
     // Last scan card
-    LastScanDto? MostRecentScan
+    LastScanDto? MostRecentScan,
+
+    SeverityBreakdownDto SeverityBreakdown 
+);
+
+public record SeverityBreakdownDto(
+    int Critical,
+    int High,
+    int Medium,
+    int Low
 );
 
 public record SslUrgentDto(
