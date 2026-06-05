@@ -10,7 +10,10 @@ import com.vulnwatch.worker.model.DomainIntel;
 import com.vulnwatch.worker.model.ScanJob;
 import com.vulnwatch.worker.orchestrator.DomainScanOrchestrator;
 import com.vulnwatch.worker.orchestrator.DomainScanOrchestrator.OrchestratorResult;
+import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
+import com.vulnwatch.worker.owasp.service.OWASPEvaluator;
 import com.vulnwatch.worker.persistence.DomainPersistence;
+import com.vulnwatch.worker.persistence.OWASPPersistence;
 import com.vulnwatch.worker.publisher.DomainIntelPublisher;
 import com.vulnwatch.worker.state.ScanJobStateMachine;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,8 @@ public class DomainJobProcessor implements JobProcessor {
     private final DomainIntelPublisher publisher;
     private final ScanJobStateMachine stateMachine;
     private final CheckpointManager checkpointManager;
+    private final OWASPEvaluator owaspEvaluator;
+    private final OWASPPersistence owaspPersistence;
 
     @Override
     public void process(ScanJob job) {
@@ -56,31 +61,56 @@ public class DomainJobProcessor implements JobProcessor {
     }
 
     private void executeScanPipeline(ScanJob job) {
-        describeJobBestEffort(job);
 
-        OrchestratorResult result = scanOrchestrator.scan(job);
+        describeJobBestEffort(job);                                         // step 1
 
-        int score = computeScore(result.aiResults());
-        log.info("Security score calculated [scanId={} score={}]", job.scanId(), score);
+        OrchestratorResult result = scanOrchestrator.scan(job);            // step 2
 
+        int score = computeScore(result.aiResults());                       // step 3
+        log.info("Security score [scanId={} score={}]", job.scanId(), score);
+
+        // step 4 — unchanged except DomainFinding now carries id
         List<DomainFinding> findings = persistence.saveFindings(
-                job.scanId(),
-                job.domainId(),
-                result.engineResults(),
-                result.aiResults(),
-                score
+                job.scanId(), job.domainId(),
+                result.engineResults(), result.aiResults(), score
         );
 
         if (findings.isEmpty()) {
             log.warn("No findings persisted [scanId={}]", job.scanId());
         }
 
-        publisher.publishSuccess(
-                job,
-                DomainIntel.of(job, score, surfaceAiEnricher.currentAvailability())
+        // step 5 — rule-based OWASP mapping
+        OWASPEvaluationResult owaspResult = owaspEvaluator.evaluate(
+                job.scanId(), findings,
+                result.engineResults(), result.aiResults()
         );
 
-        log.info("Domain scan complete [scanId={}]", job.scanId());
+        // step 6 — persist mapping rows + score/tier on Scans
+        owaspPersistence.saveMapping(owaspResult);
+
+        // step 7 — one AI call for the posture narrative (best-effort)
+        String narrative = generateOwaspPostureBestEffort(owaspResult);
+
+        // step 8 — persist narrative (best-effort, never throws)
+        owaspPersistence.saveNarrative(job.scanId(), narrative);
+
+        // step 9 — publish
+        publisher.publishSuccess(
+                job,
+                DomainIntel.of(job, score, owaspResult, surfaceAiEnricher.currentAvailability())
+        );
+
+        log.info("Scan complete [scanId={}]", job.scanId());
+    }
+
+    private String generateOwaspPostureBestEffort(OWASPEvaluationResult owaspResult) {
+        try {
+            return aiEnricher.posture(owaspResult);
+        } catch (Exception e) {
+            log.warn("OWASP posture generation failed [scanId={}]: {}",
+                    owaspResult.scanId(), e.getMessage());
+            return null;
+        }
     }
 
     private void handlePipelineFailure(ScanJob job, Exception e) {
