@@ -40,12 +40,13 @@ public class SubdomainEngine implements Scanner {
     @Override
     public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
-        String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
+        String outputFileName = "%s/%s-%s.json".formatted(tempLocation,binary,job.scanId());
         Path outFile = Path.of(outputFileName);
 
         List<String> command = List.of(
                 binary,
                 "-d", domain,
+                "-json",
                 "-o", outputFileName
         );
 
@@ -60,6 +61,8 @@ public class SubdomainEngine implements Scanner {
         } catch (Exception e) {
             log.error(e.getMessage());
             throw new RuntimeException(e);
+        } finally {
+            cliExecutor.deleteSilently(outFile);
         }
 
     }

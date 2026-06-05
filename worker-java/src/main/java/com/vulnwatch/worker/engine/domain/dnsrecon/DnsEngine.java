@@ -46,7 +46,7 @@ public class DnsEngine implements Scanner {
     @Override
     public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
-        String outputFileName = "%s/%s-%s.json".formatted(tempLocation,binary,job.scanId());
+        String outputFileName = "%s/dnsrecon-%s.json".formatted(tempLocation,job.scanId());
         System.out.println(outputFileName);
 
         Path outFile = Path.of(outputFileName);

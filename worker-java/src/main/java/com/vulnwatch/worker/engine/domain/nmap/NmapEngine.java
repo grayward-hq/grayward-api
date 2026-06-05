@@ -55,18 +55,19 @@ public class NmapEngine implements Scanner {
 
         try {
             cliExecutor.run(command, timeoutSeconds, false);
-            String json = cliExecutor.readAndDelete(outFile);
             List<NmapFindings> findings = nmapParser.parse(outFile.toFile());
             return EngineResult.success(SurfaceType.PORTS, Map.of("findings", findings));
         }catch (Exception e){
-            log.error("Error performing %s scan for scan_id:%s".formatted(job.scanType(), job.scanId()));
-            throw new RuntimeException(e);
+            log.error("Error performing %s scan for scan_id:%s, %s".formatted(job.scanType(), job.scanId(), e.getMessage()));
+            throw new RuntimeException(e.getCause());
+        }finally {
+            cliExecutor.deleteSilently(outFile);
         }
     }
 
     @Override
     public SurfaceType surfaceType() {
-        return null;
+        return SurfaceType.PORTS;
     }
 
 }

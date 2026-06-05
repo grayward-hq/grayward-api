@@ -63,8 +63,10 @@ public class NucleiEngine implements Scanner {
             List<NucleiEngineResult> findings = nucleiParser.parse(outFile.toFile());
             return EngineResult.success(SurfaceType.HTTP_HEADERS, Map.of("findings", findings));
         }catch (Exception e){
-            log.error("Error performing %s scan for scan_id:%s".formatted(job.scanType(), job.scanId()));
+            log.error("Error performing %s scan for scan_id:%s, %s".formatted(job.scanType(), job.scanId(), e.getMessage()));
             throw new RuntimeException(e);
+        }finally {
+            cliExecutor.deleteSilently(outFile);
         }
     }
 }
