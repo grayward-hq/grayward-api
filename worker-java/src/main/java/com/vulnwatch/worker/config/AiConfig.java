@@ -28,24 +28,17 @@ public class AiConfig {
 
     @Bean
     @Primary
-    @ConditionalOnProperty(
-            name = "worker.ai.provider",
-            havingValue = "groq",
-            matchIfMissing = true
-    )
+    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "groq")
     public ChatClient groqChatClient() {
-        // Correct way to initialize OpenAiApi using the Builder pattern
         OpenAiApi groqApi = OpenAiApi.builder()
                 .baseUrl(this.groqBaseUrl)
                 .apiKey(this.groqApiKey)
                 .build();
 
-        // Define options using bean setter style setters
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(this.groqModel)
                 .build();
 
-        // Assemble the Chat Model utilising its designated builder
         OpenAiChatModel dedicatedGroqModel = OpenAiChatModel.builder()
                 .openAiApi(groqApi)
                 .defaultOptions(options)
@@ -55,16 +48,17 @@ public class AiConfig {
     }
 
     /**
-     * Native OpenAI Client — Active when explicitly requested
+     * Native OpenAI Client — Active when worker.ai.provider=openai
      */
     @Bean
+    @Primary
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "openai")
     public ChatClient openAiChatClient(OpenAiChatModel openAiChatModel) {
         return ChatClient.builder(openAiChatModel).build();
     }
 
     /**
-     * Anthropic Claude Core Engines
+     * Anthropic Claude — Active when worker.ai.provider=anthropic
      */
     @Bean
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "anthropic")
@@ -72,6 +66,9 @@ public class AiConfig {
         return ChatClient.builder(anthropicChatModel).build();
     }
 
+    /**
+     * Anthropic Claude (alias) — Active when worker.ai.provider=claude
+     */
     @Bean
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "claude")
     public ChatClient claudeChatClient(AnthropicChatModel anthropicChatModel) {
@@ -79,7 +76,7 @@ public class AiConfig {
     }
 
     /**
-     * Google Gemini Engines
+     * Google Gemini — Active when worker.ai.provider=google
      */
     @Bean
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "google")
@@ -87,6 +84,9 @@ public class AiConfig {
         return ChatClient.builder(googleGenAiChatModel).build();
     }
 
+    /**
+     * Google Gemini (alias) — Active when worker.ai.provider=gemini
+     */
     @Bean
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "gemini")
     public ChatClient geminiChatClient(GoogleGenAiChatModel googleGenAiChatModel) {

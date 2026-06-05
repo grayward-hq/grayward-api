@@ -29,7 +29,7 @@
                 <artifactId>mcp-core</artifactId>
                 <version>1.0.0</version>
             </dependency>
-            
+
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
@@ -145,6 +145,32 @@
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
+
+
+
+        <!-- FIX: spring-retry was relied upon transitively from Spring AI starters,
+                  which is fragile and version-sensitive. Declared explicitly so the
+                  @Retryable / @Recover / @EnableRetry annotations are guaranteed
+                  to be on the classpath regardless of Spring AI's internal wiring. -->
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
+        <!-- FIX: SurfaceType.java imported io.swagger.v3.oas.annotations.media.Schema
+                  which was not declared, causing a compilation failure. Two options:
+                  (a) keep the annotations and add this dependency, or
+                  (b) remove the annotations and use Javadoc instead (preferred for a
+                      non-web worker that never serves an OpenAPI spec).
+                  The corrected SurfaceType.java uses option (b) — this dependency is
+                  therefore commented out. Uncomment if you re-add the annotations. -->
+        <!--
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations</artifactId>
+            <version>2.2.21</version>
+        </dependency>
+        -->
     </dependencies>
 
     <build>
