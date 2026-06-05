@@ -12,6 +12,8 @@ public class ScannedDomain : EntityBase
     public DateTime TokenIssuedAt { get; private set; }
     public User User { get; private set; } = default!;
     public ICollection<Scan> Scans { get; private set; } = new List<Scan>();
+    public ICollection<BrandThreat> BrandThreats { get; set; } = [];
+    public ICollection<MonitoredEmail> MonitoredEmails { get; set; } = [];
 
     private ScannedDomain() { }
 

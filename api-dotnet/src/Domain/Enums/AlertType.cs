@@ -7,5 +7,7 @@ public enum AlertType
     CriticalFindingDetected,
     DomainStatusChanged,
     SecurityScoreDrop,
-    OwnershipWarning
+    OwnershipWarning,
+    BrandThreat,
+    CredentialBreach
 }

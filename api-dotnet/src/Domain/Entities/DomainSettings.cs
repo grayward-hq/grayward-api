@@ -17,6 +17,7 @@ public class DomainSettings : EntityBase
         private set => _sslAlertThresholds = value;
     }
 
+    public DateTime? NextBreachCheckAt { get; set; }
     public AlertChannel NotificationChannel { get; private set; }
     public DateTime? LastMonitoredAt { get; private set; }
     public DateTime? NextScheduledAt { get; private set; }

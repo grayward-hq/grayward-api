@@ -36,6 +36,15 @@ public interface IRefreshTokenRepository : IRepository<RefreshToken>
 
 }
 
+public interface IBrandThreatRepository : IRepository<BrandThreat>
+{
+
+   Task<List<BrandThreat>> FindActiveByDomainNotInList(Guid domainId, List<string> checkedCandidates, CancellationToken ct = default);
+    Task<BrandThreat?> FindByDomainAndLookAlike(Guid domainId, string lookAlike, CancellationToken ct);
+    Task<List<BrandThreat>> FindActiveByDomain(Guid domainId, CancellationToken ct);
+    Task<List<BrandThreat>> FindByDomain(Guid domainId, CancellationToken ct);
+}
+
 public interface IDomainRepository : IRepository<ScannedDomain>
 {
     Task<List<ScannedDomain>> GetDomainsWithExpiringCertificates(DateTimeOffset maxLookahead, CancellationToken ct = default);
@@ -66,6 +75,15 @@ public interface IDomainSettingsRepository
 public interface IIntegrationRepository : IRepository<Integration>
 {
     Task<Integration?> GetByUserAndProvider(Guid userId, IntegrationProvider provider, CancellationToken ct);
+}
+
+public interface IMonitoredEmailRepository : IRepository<MonitoredEmail>
+{
+    Task<List<MonitoredEmail>> GetByDomainId(Guid domainId, CancellationToken ct);
+    Task<List<MonitoredEmail>> FindByUser(Guid userId, CancellationToken ct);
+    Task<MonitoredEmail?> FindByDomainAndEmail(Guid domainId, string email, CancellationToken ct);
+    Task<MonitoredEmail?> FindById(Guid emailId, CancellationToken ct);
+    Task<int> CountByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface INotificationPreferencesRepository : IRepository<NotificationPreferences>
