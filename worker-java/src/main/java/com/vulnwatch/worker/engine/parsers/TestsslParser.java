@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.engine.domain.testssl.SslEngine;
 import com.vulnwatch.worker.engine.domain.testssl.models.SslFindings;
+import com.vulnwatch.worker.enums.FindingSeverity;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -34,7 +35,7 @@ public class TestsslParser implements Parser<List<SslFindings>>{
                             .ip(ip)
                             .port(port)
                             .finding(finding)
-                            .severity(severity)
+                            .severity(FindingSeverity.fromName(severity))
                             .build();
                     findings.add(sslFindings);
                 }
