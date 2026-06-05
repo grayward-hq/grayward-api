@@ -89,7 +89,7 @@ public class VerifyDomainHandler(
                 existing.RecordOwnershipConfirmed();
             }
 
-            await domains.SaveChangesAsync();
+            await domains.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (
             ex is DbUpdateException or DbUpdateConcurrencyException)

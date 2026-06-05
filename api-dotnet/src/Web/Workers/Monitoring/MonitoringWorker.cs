@@ -2,6 +2,7 @@ using Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Web.Workers.Monitoring.Jobs;
 
 namespace Web.Workers.Monitoring;
 
@@ -83,14 +84,18 @@ public sealed class MonitoringWorker(
                 var scanDispatch = scope.ServiceProvider.GetRequiredService<ScanDispatchService>();
                 var sslCheck = scope.ServiceProvider.GetRequiredService<SslExpiryCheckService>();
                 var ownershipCheck = scope.ServiceProvider.GetRequiredService<OwnershipCheckService>();
-
+                var brandProtection = scope.ServiceProvider.GetRequiredService<BrandProtectionCheckService>();
+                var breachMonitoring = scope.ServiceProvider.GetRequiredService<BreachMonitoringService>();
+    
                 // Re-fetch within this scope so SaveChangesAsync tracks the right object
                 var settings = await settingsRepo.GetByDomainId(domainId, ct);
                 if (settings is null) return;
 
+                
+
                 await ProcessDomainAsync(
                     settings, scanDispatch, sslCheck, ownershipCheck,
-                    settingsRepo, ct);
+                    brandProtection, breachMonitoring, settingsRepo, ct);
             }
             catch (Exception ex)
             {
@@ -113,10 +118,14 @@ public sealed class MonitoringWorker(
         ScanDispatchService scanDispatch,
         SslExpiryCheckService sslCheck,
         OwnershipCheckService ownershipCheck,
+        BrandProtectionCheckService brandProtectionService,
+        BreachMonitoringService breachMonitoringService,
         IDomainSettingsRepository settingsRepo,
         CancellationToken ct)
     {
+        var domain = settings.Domain;
         var domainName = settings.Domain.DomainName;
+        var domainId = settings.Domain.Id;
 
         logger.LogDebug("Processing monitoring for {Domain}", domainName);
 
@@ -129,6 +138,18 @@ public sealed class MonitoringWorker(
 
         await RunGuarded(() => ownershipCheck.CheckAsync(settings, ct),
             "ownership check", domainName);
+
+        await RunGuarded(() => brandProtectionService.CheckAsync(domain, ct),
+            "brand protection check", domainName);
+
+        // await RunGuarded(() => breachMonitoringService.CheckAsync(domainId, ct),
+        //     "breach monitoring check", domainName);
+
+        if (settings.NextBreachCheckAt is null || settings.NextBreachCheckAt <= DateTime.UtcNow)
+        {
+            await RunGuarded(() => breachMonitoringService.CheckAsync(domain, ct), "breach monitoring", domainName);
+            settings.NextBreachCheckAt = DateTime.UtcNow.AddHours(24);
+        }
 
         // Always advance NextScheduledAt even if some checks failed —
         // we don't want a broken domain to block the queue
