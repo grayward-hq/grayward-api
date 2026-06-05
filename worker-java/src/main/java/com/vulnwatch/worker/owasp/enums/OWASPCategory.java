@@ -67,6 +67,14 @@ public enum OWASPCategory {
     AUTH_FAILURES(
             "A07", "Identification and Authentication Failures",
             "Functions related to identity, authentication, and session management are broken."
+    ),
+
+    /**
+     * Vulnerable and Outdated Components
+     */
+    VULNERABLE_COMPONENTS(
+            "A06", "Vulnerable and Outdated Components",
+            "Security risks increase when components run with known vulnerabilities or are no longer supported."
     );
 
     private final String code;
