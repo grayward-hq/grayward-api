@@ -1,3 +1,4 @@
+using Application.Features.Dashboard.DTOs;
 using Application.Features.Domain;
 using Application.Features.Scans;
 using Domain.Entities;
@@ -79,6 +80,10 @@ public interface IScanRepository : IRepository<Scan>
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
+    Task<List<ScanScoreDto>> GetRecentCompletedScans(
+        Guid userId,
+        DateTime daysAgo,
+        CancellationToken ct);
     Task<(List<Scan> Items, int TotalCount)> GetPaged(ScanFilter filter, CancellationToken ct);
 }
 

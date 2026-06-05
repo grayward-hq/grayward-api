@@ -15,7 +15,7 @@ public class AlertDispatcher(
     INotificationPreferencesRepository prefs,
     IDomainSettingsRepository domainSettings,
     IConfiguration config,
-    ILogger<AlertDispatcher> logger) : AlertHandlerBase(alerts, domainSettings)
+    ILogger<AlertDispatcher> logger) : AlertHandlerBase(alerts, domainSettings, logger)
 {
     private readonly INotificationPreferencesRepository _prefs = prefs;
     private readonly IConfiguration _config = config;
@@ -63,8 +63,20 @@ public class AlertDispatcher(
 
     private async Task HandleScanCompleted(ScanCompletedEvent e, CancellationToken ct)
     {
+        _logger.LogInformation(
+            "Handling ScanCompleted event — Domain: {DomainName}, ScanId: {ScanId}, UserId: {UserId}",
+            e.DomainName, e.ScanId, e.UserId);
+
         var channels = await ResolveChannelsAsync(e.DomainId, ct);
         var deduplicationKey = e.ScanId.ToString();
+
+        if (channels.Count == 0)
+        {
+            _logger.LogWarning(
+                "No notification channels configured for domain {DomainName} (ID: {DomainId}) — scan alerts will not be sent",
+                e.DomainName, e.DomainId);
+            return;
+        }
 
         foreach (var channel in channels)
         {
@@ -78,6 +90,10 @@ public class AlertDispatcher(
                     e.DomainName, channel);
                 continue;
             }
+
+            _logger.LogInformation(
+                "Creating ScanCompleted alert — Domain: {DomainName}, Channel: {Channel}, Severity: {FindingSeverities}",
+                e.DomainName, channel, string.Join(",", e.FindingSeverities));
 
             var alert = ScanCompletedAlertFactory.Create(e, channel);
             await SaveAlertGuarded(alert, ct);
