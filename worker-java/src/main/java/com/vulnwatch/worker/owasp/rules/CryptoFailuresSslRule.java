@@ -37,7 +37,7 @@ public class CryptoFailuresSslRule implements OWASPMappingRule {
         List<SslFindings> findings = findings(engine);
         return findings.stream()
                 .map(SslFindings::severity)
-                .max(Comparator.naturalOrder())
+                .max(Comparator.reverseOrder())
                 .orElse(FindingSeverity.NONE);
     }
 
