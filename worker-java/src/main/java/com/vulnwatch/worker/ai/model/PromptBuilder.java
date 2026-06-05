@@ -2,10 +2,12 @@ package com.vulnwatch.worker.ai.model;
 
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -73,5 +75,40 @@ public class PromptBuilder {
                 Dependencies:
                 %s
                 """.formatted(String.join("\n", dependencies));
+    }
+
+
+    public String owaspPostureSystemPrompt() {
+        return """
+        You are a cybersecurity analyst writing an executive security posture summary.
+        Use ONLY the data provided. Do not invent findings or categories.
+        Return a single paragraph, 3-5 sentences, plain English, no markdown, no bullets.
+        """;
+    }
+
+    public String owaspPostureUserPrompt(OWASPEvaluationResult result) {
+        String categoryLines = result.categoryScores().stream()
+                .map(c -> "%s (%s): score=%d, status=%s, findings=%d"
+                        .formatted(
+                                c.category().getCode(),
+                                c.category().getDisplayName(),
+                                c.score(),
+                                c.status().name(),
+                                c.findings().size()
+                        ))
+                .collect(Collectors.joining("\n"));
+
+        return """
+        Overall OWASP Score: %d/100 (%s)
+
+        Category breakdown:
+        %s
+
+        Write a 3-5 sentence executive summary that:
+        1. States the overall score and tier.
+        2. Names the 1-2 lowest-scoring categories.
+        3. Estimates the score improvement if those categories were remediated.
+        4. Ends with a concrete prioritised action.
+        """.formatted(result.overallScore(), result.tier().getLabel(), categoryLines);
     }
 }
