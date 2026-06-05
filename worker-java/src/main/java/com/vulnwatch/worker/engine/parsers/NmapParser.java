@@ -2,6 +2,7 @@ package com.vulnwatch.worker.engine.parsers;
 
 import com.vulnwatch.worker.engine.domain.dnsrecon.model.ScanContext;
 import com.vulnwatch.worker.engine.domain.nmap.models.NmapFindings;
+import com.vulnwatch.worker.enums.FindingSeverity;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -90,6 +91,7 @@ public class NmapParser implements Parser<List<NmapFindings>> {
                             .port(port)
                             .protocol(protocol)
                             .service(service)
+                            .severity(FindingSeverity.HIGH)
                             .finding(RISKY_PORTS.get(port))
                             .build();
                     findings.add(nmapFindings);
