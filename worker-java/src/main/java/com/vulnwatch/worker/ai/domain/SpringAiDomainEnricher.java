@@ -49,6 +49,16 @@ public class SpringAiDomainEnricher implements AiEnricher {
 
     @Override
     public String posture(OWASPEvaluationResult owaspResult) {
-        return "";
+        try {
+            return chatClient.prompt()
+                    .system(promptBuilder.owaspPostureSystemPrompt())
+                    .user(promptBuilder.owaspPostureUserPrompt(owaspResult))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.warn("OWASP posture call failed [scanId={}]: {}",
+                    owaspResult.scanId(), e.getMessage());
+            return null;
+        }
     }
 }
