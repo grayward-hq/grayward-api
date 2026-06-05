@@ -2,9 +2,11 @@ using Application.Behaviours;
 using Application.Features.Alerts;
 using Application.Features.Alerts.SslExpiry;
 using Application.Features.Auth;
+using Application.Features.BreachMonitoring;
 using Application.Features.Scans;
 using Application.Helpers;
 using Application.Interfaces;
+using Application.Services;
 using DnsClient;
 using Domain.Entities;
 using FluentValidation;
@@ -21,6 +23,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Infrastructure;
 using Serilog;
 using StackExchange.Redis;
 using System.Text;
@@ -33,6 +36,7 @@ using Web.Middleware;
 using Web.Services;
 using Web.Workers.Alerts;
 using Web.Workers.Monitoring;
+using Web.Workers.Monitoring.Jobs;
 using Web.Workers.Reapers;
 
 LoadDotEnv();
@@ -248,6 +252,7 @@ builder.Services
             client.BaseAddress = new Uri(baseUrl);
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
         });
+builder.Services.AddScoped<ClaudeService>();
 builder.Services.AddScoped<AnthropicChatService>();
 builder.Services.AddScoped<GeminiChatService>();
 builder.Services.AddScoped<OpenAiChatService>();
@@ -262,6 +267,26 @@ builder.Services.AddDataProtection()
         .PersistKeysToDbContext<VulnWatchDbContext>()
         .SetApplicationName("VulnWatch");
 builder.Services.AddHostedService<DomainVerificationReaper>();
+builder.Services.AddScoped<OwaspEvaluationEngine>();
+builder.Services.AddHttpClient("BrandProtection", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = true,
+    MaxAutomaticRedirections = 3,
+    ServerCertificateCustomValidationCallback =
+        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator // lookalikes may have bad certs
+});
+builder.Services.AddScoped<HaveIBeenPwnedService>();
+builder.Services.AddScoped<BreachMonitoringService>();
+builder.Services.AddScoped<BrandProtectionCheckService>();
+builder.Services.AddScoped<LookAlikeDomainChecker>();
+builder.Services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
+builder.Services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
+
+QuestPDF.Settings.License = LicenseType.Community;
         
 var corsSettings = builder.Configuration
     .GetSection("Cors")
