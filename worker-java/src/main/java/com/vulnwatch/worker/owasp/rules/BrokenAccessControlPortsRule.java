@@ -21,7 +21,8 @@ public class BrokenAccessControlPortsRule implements OWASPMappingRule {
 
     @Override
     public boolean matches(EngineResult engine, AiResult ai) {
-        if (engine.surfaceType() != SurfaceType.PORTS || !engine.success()) return false;
+        if (engine.surfaceType() != SurfaceType.PORTS || !engine.success())
+            return false;
 
         List<NmapFindings> findings = findings(engine);
 
