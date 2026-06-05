@@ -1,7 +1,9 @@
 package com.vulnwatch.worker.owasp.enums;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+@Getter
 @RequiredArgsConstructor
 public enum OWASPComplianceTier {
     EXCELLENT      (90, 100, "Excellent"),
