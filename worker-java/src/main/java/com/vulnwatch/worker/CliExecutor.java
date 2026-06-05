@@ -56,7 +56,7 @@ public final class CliExecutor {
 
         } catch (IOException e) {
             throw new CliExecutionException(
-                    "Failed to start process: " + command.get(0), e);
+                    "Failed to start process: " + command.getFirst(), e);
         }
 
         StringBuilder output = new StringBuilder();
