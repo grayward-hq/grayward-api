@@ -5,6 +5,7 @@ import com.vulnwatch.worker.ai.model.PromptBuilder;
 import com.vulnwatch.worker.model.AiResult;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -44,5 +45,10 @@ public class SpringAiDomainEnricher implements AiEnricher {
             log.warn("AI describe failed [scanId={}]: {}", job.scanId(), e.getMessage());
             return null;
         }
+    }
+
+    @Override
+    public String posture(OWASPEvaluationResult owaspResult) {
+        return "";
     }
 }
