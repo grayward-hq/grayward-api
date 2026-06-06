@@ -18,17 +18,17 @@ public class OWASPPersistence {
     private final JdbcTemplate jdbc;
 
     private static final String INSERT_MAPPING = """
-        INSERT INTO "owasp_mapping"
-            ("id", "scan_id", "finding_id", "category_code", "category_name",
-             "status", "severity", "finding_label", "created_at", "updated_at")
+        INSERT INTO "OwaspMapping"
+            ("Id", "ScanId", "FindingId", "CategoryCode", "CategoryName",
+             "Status", "Severity", "FindingLabel", "CreatedAt", "UpdatedAt")
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        ON CONFLICT ("scan_id", "finding_id") DO UPDATE
-          SET "category_code"  = EXCLUDED."category_code",
-              "category_name"  = EXCLUDED."category_name",
-              "status"         = EXCLUDED."status",
-              "severity"       = EXCLUDED."severity",
-              "finding_label"  = EXCLUDED."finding_label",
-              "updated_at"     = NOW()
+        ON CONFLICT ("ScanId", "FindingId") DO UPDATE
+          SET "CategoryCode"  = EXCLUDED."CategoryCode",
+              "CategoryName"  = EXCLUDED."CategoryName",
+              "Status"        = EXCLUDED."Status",
+              "Severity"      = EXCLUDED."Severity",
+              "FindingLabel"  = EXCLUDED."FindingLabel",
+              "UpdatedAt"     = NOW()
         """;
 
     private static final String UPDATE_SCAN_OWASP = """

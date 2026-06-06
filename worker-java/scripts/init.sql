@@ -13,16 +13,12 @@
 --   2. .NET API pushes a ScanJob onto Redis  ("scan-jobs" list).
 --   3. Java worker pops the job, runs scanners, then:
 --        a. DomainPersistence  → INSERT INTO "Findings", UPDATE "Scans"
---        b. OWASPPersistence   → INSERT INTO "owasp_mapping",
+--        b. OWASPPersistence   → INSERT INTO "OwaspMapping",
 --                                UPDATE "Scans" (OWASPScore / OWASPTier)
 --        c. OWASPPersistence   → UPDATE "Scans" (OWASPPostureSummary)
 --
 -- Usage:
 --   psql -U postgres -d vulnwatchdb -f init.sql
---
--- Or from docker-compose (mount this file as the entrypoint init):
---   volumes:
---     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 -- =============================================================================
 
 -- Enable uuid generation (needed when Postgres generates UUIDs directly)
@@ -59,14 +55,13 @@ CREATE TABLE IF NOT EXISTS "AspNetUsers" (
 -- Domains table (stub — worker reads DomainId, updates SslCertExpiry)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS "Domains" (
-                                         "Id"                 UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "UserId"             UUID        NOT NULL REFERENCES "AspNetUsers"("Id") ON DELETE CASCADE,
-    "Name"               TEXT        NOT NULL,
-    "VerificationStatus" TEXT        NOT NULL DEFAULT 'Verified',
-    "SslCertExpiry"      TIMESTAMPTZ,
-    "CreatedAt"          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    "UpdatedAt"          TIMESTAMPTZ,
-    -- Additional columns the .NET API uses (included so FK from Scans works):
+                                         "Id"                       UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "UserId"                   UUID        NOT NULL REFERENCES "AspNetUsers"("Id") ON DELETE CASCADE,
+    "Name"                     TEXT        NOT NULL,
+    "VerificationStatus"       TEXT        NOT NULL DEFAULT 'Verified',
+    "SslCertExpiry"            TIMESTAMPTZ,
+    "CreatedAt"                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "UpdatedAt"                TIMESTAMPTZ,
     "VerificationToken"        TEXT,
     "TokenIssuedAt"            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "VerificationMethod"       TEXT        NOT NULL DEFAULT 'Dns',
@@ -83,46 +78,46 @@ CREATE TABLE IF NOT EXISTS "Domains" (
 -- SecurityScore + OWASPScore + OWASPTier + OWASPPostureSummary).
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS "Scans" (
-                                       "Id"                  UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "UserId"              UUID        NOT NULL REFERENCES "AspNetUsers"("Id") ON DELETE RESTRICT,
-    "DomainId"            UUID        REFERENCES "Domains"("Id") ON DELETE CASCADE,
+                                       "Id"                    UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "UserId"                UUID        NOT NULL REFERENCES "AspNetUsers"("Id") ON DELETE RESTRICT,
+    "DomainId"              UUID        REFERENCES "Domains"("Id") ON DELETE CASCADE,
     "MonitoredRepositoryId" UUID,
-    "IdempotencyKey"      UUID        NOT NULL UNIQUE,
-    "TargetType"          TEXT        NOT NULL DEFAULT 'Domain',
-    "Coverage"            INT         NOT NULL DEFAULT 0,
-    "SurfaceTypes"        INT         NOT NULL DEFAULT 0,
-    "Status"              TEXT        NOT NULL DEFAULT 'Queued',
+    "IdempotencyKey"        UUID        NOT NULL UNIQUE,
+    "TargetType"            TEXT        NOT NULL DEFAULT 'Domain',
+    "Coverage"              INT         NOT NULL DEFAULT 0,
+    "SurfaceTypes"          INT         NOT NULL DEFAULT 0,
+    "Status"                TEXT        NOT NULL DEFAULT 'Queued',
     -- Written by DomainPersistence.updateScan
-    "SecurityScore"       INT,
-    "CompletedAt"         TIMESTAMPTZ,
-    "StartedAt"           TIMESTAMPTZ,
-    -- Written by OWASPPersistence.saveMapping  (NEW columns)
-    "OWASPScore"          INT,
-    "OWASPTier"           TEXT,
-    -- Written by OWASPPersistence.saveNarrative (NEW column)
-    "OWASPPostureSummary" TEXT,
-    "CreatedAt"           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    "UpdatedAt"           TIMESTAMPTZ
+    "SecurityScore"         INT,
+    "CompletedAt"           TIMESTAMPTZ,
+    "StartedAt"             TIMESTAMPTZ,
+    -- Written by OWASPPersistence.saveMapping
+    "OWASPScore"            INT,
+    "OWASPTier"             TEXT,
+    -- Written by OWASPPersistence.saveNarrative
+    "OWASPPostureSummary"   TEXT,
+    "CreatedAt"             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "UpdatedAt"             TIMESTAMPTZ
     );
 
-CREATE INDEX IF NOT EXISTS "IX_Scans_DomainId"        ON "Scans"("DomainId");
-CREATE INDEX IF NOT EXISTS "IX_Scans_UserId"          ON "Scans"("UserId");
+CREATE INDEX IF NOT EXISTS "IX_Scans_DomainId"             ON "Scans"("DomainId");
+CREATE INDEX IF NOT EXISTS "IX_Scans_UserId"               ON "Scans"("UserId");
 CREATE UNIQUE INDEX IF NOT EXISTS "IX_Scans_IdempotencyKey" ON "Scans"("IdempotencyKey");
 
 -- =============================================================================
 -- Findings table
 -- Written exclusively by Java worker (DomainPersistence.insertFindings).
--- Id is pre-assigned in Java so that owasp_mapping can reference it.
+-- Id is pre-assigned in Java so that OwaspMapping can reference it.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS "Findings" (
-                                          "Id"                UUID        NOT NULL PRIMARY KEY,   -- pre-assigned by Java
+                                          "Id"                UUID        NOT NULL PRIMARY KEY,
                                           "ScanId"            UUID        NOT NULL REFERENCES "Scans"("Id") ON DELETE CASCADE,
-    "Surface"           TEXT        NOT NULL,   -- SurfaceType.getLabel()
-    "Severity"          TEXT        NOT NULL,   -- Critical | High | Medium | Low | None
+    "Surface"           TEXT        NOT NULL,
+    "Severity"          TEXT        NOT NULL,
     "Title"             TEXT        NOT NULL,
     "CveId"             TEXT,
     "AiExplanation"     TEXT,
-    "TechnicalPayload"  TEXT,                   -- JSON string
+    "TechnicalPayload"  TEXT,
     "RemediationSteps"  TEXT,
     "Status"            TEXT        NOT NULL DEFAULT 'Open',
     "CreatedAt"         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -132,26 +127,26 @@ CREATE TABLE IF NOT EXISTS "Findings" (
 CREATE INDEX IF NOT EXISTS "IX_Findings_ScanId" ON "Findings"("ScanId");
 
 -- =============================================================================
--- owasp_mapping table
+-- OwaspMapping table
 -- Written exclusively by Java worker (OWASPPersistence.saveMapping).
--- snake_case column names must match the Java SQL exactly.
--- The ON CONFLICT clause in Java targets (scan_id, finding_id).
+-- PascalCase column names match the Java SQL exactly.
+-- The ON CONFLICT clause in Java targets ("ScanId", "FindingId").
 -- =============================================================================
-CREATE TABLE IF NOT EXISTS "owasp_mapping" (
-                                               "id"            UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "scan_id"       UUID        NOT NULL REFERENCES "Scans"("Id") ON DELETE CASCADE,
-    "finding_id"    UUID        NOT NULL REFERENCES "Findings"("Id") ON DELETE CASCADE,
-    "category_code" TEXT        NOT NULL,   -- A01 … A07
-    "category_name" TEXT        NOT NULL,   -- e.g. Broken Access Control
-    "status"        TEXT        NOT NULL,   -- COMPLIANT | PARTIAL | NON_COMPLIANT
-    "severity"      TEXT        NOT NULL,   -- CRITICAL | HIGH | MEDIUM | LOW | NONE
-    "finding_label" TEXT,
-    "created_at"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT "UQ_owasp_mapping_scan_finding" UNIQUE ("scan_id", "finding_id")
+CREATE TABLE IF NOT EXISTS "OwaspMapping" (
+                                              "Id"            UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
+    "ScanId"        UUID        NOT NULL REFERENCES "Scans"("Id") ON DELETE CASCADE,
+    "FindingId"     UUID        NOT NULL REFERENCES "Findings"("Id") ON DELETE CASCADE,
+    "CategoryCode"  TEXT        NOT NULL,
+    "CategoryName"  TEXT        NOT NULL,
+    "Status"        TEXT        NOT NULL,
+    "Severity"      TEXT        NOT NULL,
+    "FindingLabel"  TEXT,
+    "CreatedAt"     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "UpdatedAt"     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT "UQ_OwaspMapping_ScanId_FindingId" UNIQUE ("ScanId", "FindingId")
     );
 
-CREATE INDEX IF NOT EXISTS "IX_owasp_mapping_scan_id" ON "owasp_mapping"("scan_id");
+CREATE INDEX IF NOT EXISTS "IX_OwaspMapping_ScanId" ON "OwaspMapping"("ScanId");
 
 -- =============================================================================
 -- Seed: one user + one domain + one scan ready for the worker to pick up.
@@ -166,7 +161,6 @@ v_user_id   UUID := '00000000-0000-0000-0000-000000000001';
     v_scan_id   UUID := '00000000-0000-0000-0000-000000000003';
     v_idem_key  UUID := '00000000-0000-0000-0000-000000000004';
 BEGIN
-    -- Seed user (idempotent)
 INSERT INTO "AspNetUsers"
 ("Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail",
  "EmailConfirmed", "FirstName", "LastName")
@@ -175,14 +169,12 @@ VALUES
      TRUE, 'Dev', 'User')
     ON CONFLICT ("Id") DO NOTHING;
 
--- Seed domain (idempotent)
 INSERT INTO "Domains"
 ("Id", "UserId", "Name", "VerificationStatus")
 VALUES
     (v_domain_id, v_user_id, 'example.com', 'Verified')
     ON CONFLICT ("Id") DO NOTHING;
 
--- Seed scan (idempotent) — worker will update this row
 INSERT INTO "Scans"
 ("Id", "UserId", "DomainId", "IdempotencyKey",
  "TargetType", "Coverage", "SurfaceTypes", "Status")
@@ -196,7 +188,7 @@ END;
 $$;
 
 -- =============================================================================
--- Verification queries — run these to confirm the schema is correct:
+-- Verification queries
 -- =============================================================================
 -- SELECT column_name, data_type, is_nullable
 --   FROM information_schema.columns
@@ -205,7 +197,7 @@ $$;
 --
 -- SELECT column_name, data_type
 --   FROM information_schema.columns
---  WHERE table_name = 'owasp_mapping';
+--  WHERE table_name = 'OwaspMapping';
 --
 -- SELECT * FROM "Scans" WHERE "Id" = '00000000-0000-0000-0000-000000000003';
 -- =============================================================================
