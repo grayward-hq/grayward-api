@@ -1,8 +1,10 @@
 using Application.Features.Dashboard.DTOs;
+using Application.Features.BrandProtection.DTOs;
 using Application.Features.Domain;
 using Application.Features.Scans;
 using Domain.Entities;
 using Domain.Enums;
+using Application.Features.BreachMonitoring.DTOs;
 
 namespace Application.Interfaces;
 
@@ -43,6 +45,18 @@ public interface IBrandThreatRepository : IRepository<BrandThreat>
     Task<BrandThreat?> FindByDomainAndLookAlike(Guid domainId, string lookAlike, CancellationToken ct);
     Task<List<BrandThreat>> FindActiveByDomain(Guid domainId, CancellationToken ct);
     Task<List<BrandThreat>> FindByDomain(Guid domainId, CancellationToken ct);
+
+    Task<BrandThreat?> FindByIdAndDomain(Guid threatId, Guid domainId, CancellationToken ct);
+
+    Task<(List<BrandThreat> Items, int TotalCount)> GetPagedByDomain(
+    Guid domainId,
+    BrandThreatStatus? status,
+    BrandThreatRiskLevel? riskLevel,
+    int page,
+    int pageSize,
+    CancellationToken ct);
+
+Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface IDomainRepository : IRepository<ScannedDomain>
@@ -84,6 +98,13 @@ public interface IMonitoredEmailRepository : IRepository<MonitoredEmail>
     Task<MonitoredEmail?> FindByDomainAndEmail(Guid domainId, string email, CancellationToken ct);
     Task<MonitoredEmail?> FindById(Guid emailId, CancellationToken ct);
     Task<int> CountByDomain(Guid domainId, CancellationToken ct);
+    Task<(List<MonitoredEmail> Items, int TotalCount)> GetPagedByDomain(
+        Guid domainId,
+        bool? isBreached,
+        int page,
+        int pageSize,
+        CancellationToken ct);
+    Task<MonitoredEmailSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface INotificationPreferencesRepository : IRepository<NotificationPreferences>
