@@ -6,6 +6,7 @@ import com.vulnwatch.worker.owasp.enums.OWASPComplianceStatus;
 
 public record OWASPFindingMapping(
         String findingId,       // FK → Findings.Id
+        String cveId,
 
         String scanId,
 
