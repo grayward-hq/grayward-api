@@ -14,6 +14,10 @@ public class Scan : EntityBase
     public Guid? RepositoryId { get; private set; }
     public ScanStatus Status { get; private set; }
     public int? SecurityScore { get; private set; }
+    public int? OWASPScore { get; private set; }
+    public string? OWASPTier { get; private set; }
+    public string? OWASPPostureSummary  { get; private set; }
+
     public DateTime? StartedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
 
