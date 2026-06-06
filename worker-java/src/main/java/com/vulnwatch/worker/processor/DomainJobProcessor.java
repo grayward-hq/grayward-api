@@ -117,6 +117,7 @@ public class DomainJobProcessor implements JobProcessor {
         log.error("Domain scan failed [scanId={}]", job.scanId(), e);
         stateMachine.fail(job.scanId());
         publisher.publishFailure(job, e.getMessage());
+        checkpointManager.clear(job.scanId());
         // Leave checkpoint in place on unexpected failure for crash-resume tracking
     }
 
