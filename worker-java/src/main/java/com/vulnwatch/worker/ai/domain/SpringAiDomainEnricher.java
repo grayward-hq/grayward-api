@@ -5,6 +5,7 @@ import com.vulnwatch.worker.ai.model.PromptBuilder;
 import com.vulnwatch.worker.model.AiResult;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -28,7 +29,7 @@ public class SpringAiDomainEnricher implements AiEnricher {
                     .entity(AiResult.class);
         } catch (Exception e) {
             log.warn("AI enrichment failed [scanId={} surface={}]: {}",
-                    job.scanId(), engineResult.surface(), e.getMessage());
+                    job.scanId(), engineResult.surfaceType().getLabel(), e.getMessage());
             return null;
         }
     }
@@ -42,6 +43,21 @@ public class SpringAiDomainEnricher implements AiEnricher {
                     .content();
         } catch (Exception e) {
             log.warn("AI describe failed [scanId={}]: {}", job.scanId(), e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public String posture(OWASPEvaluationResult owaspResult) {
+        try {
+            return chatClient.prompt()
+                    .system(promptBuilder.owaspPostureSystemPrompt())
+                    .user(promptBuilder.owaspPostureUserPrompt(owaspResult))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.warn("OWASP posture call failed [scanId={}]: {}",
+                    owaspResult.scanId(), e.getMessage());
             return null;
         }
     }
