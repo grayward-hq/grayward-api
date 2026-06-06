@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class SecurityMisconfigHeadersRuleTest {
+public class SecurityMisconfigHeadersRuleTest {
 
     private SecurityMisconfigHeadersRule rule;
     private AiResult ai;
