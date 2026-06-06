@@ -1,4 +1,5 @@
 using Application.Features.Dashboard.DTOs;
+using Application.Features.BrandProtection.DTOs;
 using Application.Features.Domain;
 using Application.Features.Scans;
 using Domain.Entities;
@@ -43,6 +44,18 @@ public interface IBrandThreatRepository : IRepository<BrandThreat>
     Task<BrandThreat?> FindByDomainAndLookAlike(Guid domainId, string lookAlike, CancellationToken ct);
     Task<List<BrandThreat>> FindActiveByDomain(Guid domainId, CancellationToken ct);
     Task<List<BrandThreat>> FindByDomain(Guid domainId, CancellationToken ct);
+
+    Task<BrandThreat?> FindByIdAndDomain(Guid threatId, Guid domainId, CancellationToken ct);
+
+    Task<(List<BrandThreat> Items, int TotalCount)> GetPagedByDomain(
+    Guid domainId,
+    BrandThreatStatus? status,
+    BrandThreatRiskLevel? riskLevel,
+    int page,
+    int pageSize,
+    CancellationToken ct);
+
+Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface IDomainRepository : IRepository<ScannedDomain>
