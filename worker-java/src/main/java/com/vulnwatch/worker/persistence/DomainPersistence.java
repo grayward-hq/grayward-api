@@ -106,6 +106,7 @@ public class DomainPersistence {
             AiResult enrichment = i < enrichments.size() ? enrichments.get(i) : null;
 
             findings.add(new DomainFinding(
+                    UUID.randomUUID().toString(),
                     scanId,
                     engine.surfaceType().getLabel(),
                     severity(enrichment),
@@ -122,7 +123,7 @@ public class DomainPersistence {
 
     private void insertFindings(List<DomainFinding> findings) {
         jdbc.batchUpdate(INSERT_FINDING, findings, findings.size(), (ps, f) -> {
-            ps.setObject(1, UUID.randomUUID());
+            ps.setObject(1, UUID.fromString(f.id()));   // ← was UUID.randomUUID()
             ps.setObject(2, UUID.fromString(f.scanId()));
             ps.setString(3, f.surface());
             ps.setString(4, f.severity());
