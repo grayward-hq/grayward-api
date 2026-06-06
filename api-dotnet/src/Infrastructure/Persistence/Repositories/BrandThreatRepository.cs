@@ -1,5 +1,6 @@
 using Application.Interfaces;
 using Application.Features.Domain;
+using Application.Features.BrandProtection.DTOs;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -51,4 +52,57 @@ public sealed class BrandThreatRepository(VulnWatchDbContext db)
         Db.BrandThreats
             .Where(t => t.DomainId == domainId)
             .ToListAsync(ct);
+
+    public async Task<(List<BrandThreat> Items, int TotalCount)> GetPagedByDomain(
+    Guid domainId,
+    BrandThreatStatus? status,
+    BrandThreatRiskLevel? riskLevel,
+    int page,
+    int pageSize,
+    CancellationToken ct)
+    {
+        var query = Db.BrandThreats
+            .Where(t => t.DomainId == domainId);
+
+        if (status.HasValue)
+            query = query.Where(t => t.Status == status.Value);
+
+        if (riskLevel.HasValue)
+            query = query.Where(t => t.RiskLevel == riskLevel.Value);
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderByDescending(t => t.RiskLevel)   // High → Medium → Low
+            .ThenByDescending(t => t.LastCheckedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+
+    public Task<BrandThreat?> FindByIdAndDomain(Guid threatId, Guid domainId, CancellationToken ct) =>
+    Db.BrandThreats
+        .Include(t => t.Domain)
+        .FirstOrDefaultAsync(t => t.Id == threatId && t.DomainId == domainId, ct);
+
+    public async Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct)
+    {
+        var counts = await Db.BrandThreats
+            .Where(t => t.DomainId == domainId)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Active = g.Count(t => t.Status == BrandThreatStatus.Active),
+                Resolved = g.Count(t => t.Status == BrandThreatStatus.Resolved),
+                Monitoring = g.Count(t => t.Status == BrandThreatStatus.Monitoring),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return counts is null
+            ? new BrandThreatSummary(0, 0, 0, 0)
+            : new BrandThreatSummary(counts.Total, counts.Active, counts.Resolved, counts.Monitoring);
+    }
 }
