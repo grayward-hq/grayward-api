@@ -100,6 +100,7 @@ public class OWASPEvaluator {
         String label = rule.findingLabel(tuple.engine(), tuple.ai());
 
         return new OWASPFindingMapping(
+                tuple.finding().id(),
                 tuple.finding().cveId(),
                 scanId,
                 rule.category(),
