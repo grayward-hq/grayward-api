@@ -32,6 +32,20 @@ public class DashboardController(IMediator mediator) : ControllerBase
     }
 
     /// <summary>
+    /// Retrieves an array of { day: "Mon", score: 87 } objects that map directly to your chart's data prop.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Returns dashboard score trend data.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpGet("score-trend")]
+    public async Task<ActionResult<Result<IReadOnlyList<SecurityScoreTrendDto>>>> GetScoreTrend(
+        CancellationToken ct)
+    {
+        var result = await mediator.Send(new GetSecurityScoreTrendQuery(), ct);
+        return result.ToHttpResponse(this);
+    }
+
+    /// <summary>
     /// Retrieves paginated list of domains for the dashboard table.
     /// Default page size is 10 to match dashboard UI layout.
     /// </summary>

@@ -19,11 +19,14 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     // Users table is provided by IdentityDbContext
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<Waitlist> Waitlists => Set<Waitlist>();
+    public DbSet<BrandThreat> BrandThreats => Set<BrandThreat>();
     public DbSet<ScannedDomain> Domains => Set<ScannedDomain>();
     public DbSet<Scan> Scans => Set<Scan>();
     public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<Remediation> Remediations => Set<Remediation>();
     public DbSet<Integration> Integrations => Set<Integration>();
+    public DbSet<MonitoredEmail> MonitoredEmails => Set<MonitoredEmail>();
+    public DbSet<OwaspMapping> OwaspMappings => Set<OwaspMapping>();
     public DbSet<MonitoredRepository> MonitoredRepositories => Set<MonitoredRepository>();
     public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
     public DbSet<WebHookOutBox> WebHookOutBox => Set<WebHookOutBox>();
@@ -111,6 +114,142 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.HasIndex(s => new { s.MonitoringEnabled, s.NextScheduledAt })
                 .HasDatabaseName("IX_DomainSettings_DueForScan")
                 .HasFilter("\"MonitoringEnabled\" = true");
+        });
+
+        builder.Entity<MonitoredEmail>(e =>
+        {
+           e.HasKey(e => e.Id);
+
+            e.Property(e => e.EmailAddress)
+                .IsRequired()
+                .HasMaxLength(254); // RFC 5321 max email length
+
+            e.Property(e => e.IsBreached)
+                .IsRequired()
+                .HasDefaultValue(false);
+
+            e.Property(e => e.BreachCount)
+                .IsRequired()
+                .HasDefaultValue(0);
+
+            e.Property(e => e.LastCheckedAt);
+            e.Property(e => e.LatestDetectionAt);
+
+            // One email address per domain — no duplicates
+            e.HasIndex(e => new { e.DomainId, e.EmailAddress })
+                .IsUnique()
+                .HasDatabaseName("IX_MonitoredEmails_DomainId_EmailAddress");
+
+            // For fetching all emails due for a check
+            e.HasIndex(e => e.DomainId)
+                .HasDatabaseName("IX_MonitoredEmails_DomainId");
+
+            // For fetching all monitored emails for a user across domains
+            e.HasIndex(e => e.UserId)
+                .HasDatabaseName("IX_MonitoredEmails_UserId");
+
+            e.HasOne<ScannedDomain>()
+                .WithMany(d => d.MonitoredEmails)
+                .HasForeignKey(e => e.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<OwaspMapping>(e =>
+        {
+
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ScanId)
+                .IsRequired();
+
+            e.Property(x => x.FindingId)
+                .IsRequired();
+
+            e.Property(x => x.CategoryCode)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            e.Property(x => x.CategoryName)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            e.Property(x => x.FindingLabel)
+                .HasMaxLength(500);
+
+            e.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            e.Property(x => x.Severity)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            e.HasOne(x => x.Scan)
+                .WithMany()
+                .HasForeignKey(x => x.ScanId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.Finding)
+                .WithMany()
+                .HasForeignKey(x => x.FindingId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => new
+            {
+                x.ScanId,
+                x.FindingId,
+                x.CategoryCode
+            }).IsUnique();
+        });
+
+        builder.Entity<BrandThreat>(e =>
+        {
+            e.HasKey(b => b.Id);
+
+            e.Property(b => b.LookAlikeDomain)
+                .IsRequired()
+                .HasMaxLength(253); // max DNS name length
+
+            e.Property(b => b.VariationType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            e.Property(b => b.ResolvedIpAddress)
+                .HasMaxLength(45); // IPv6 max length
+
+            e.Property(b => b.HttpTitle)
+                .HasMaxLength(500);
+
+            e.Property(b => b.RiskLevel)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            e.Property(b => b.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            e.Property(b => b.LastCheckedAt)
+                .IsRequired();
+
+            // Unique constraint — prevent duplicate candidates per domain
+            e.HasIndex(b => new { b.DomainId, b.LookAlikeDomain })
+                .IsUnique()
+                .HasDatabaseName("IX_BrandThreats_DomainId_LookAlikeDomain");
+
+            // Index for the common query — all threats for a domain
+            e.HasIndex(b => b.DomainId)
+                .HasDatabaseName("IX_BrandThreats_DomainId");
+
+            // Index for filtering active threats
+            e.HasIndex(b => new { b.DomainId, b.Status })
+                .HasDatabaseName("IX_BrandThreats_DomainId_Status");
+
+            e.HasOne(b => b.Domain)
+                .WithMany(d => d.BrandThreats)
+                .HasForeignKey(b => b.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Scan>(e =>

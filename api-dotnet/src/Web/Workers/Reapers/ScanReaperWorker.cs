@@ -50,8 +50,8 @@ public class ScanReaperWorker(
         // Running scans that started more than RunningTimeout ago
         var runningCutoff = DateTime.UtcNow - RunningTimeout;
         var stalledRunning = await context.Scans
-            .Where(s => s.Status == ScanStatus.Running
-                     && s.StartedAt == null || s.StartedAt < runningCutoff)
+        .Where(s => s.Status == ScanStatus.Running
+         && (s.StartedAt == null || s.StartedAt < runningCutoff))
             .ToListAsync(ct);
 
         // Queued scans created more than QueuedTimeout ago (worker never picked them up)

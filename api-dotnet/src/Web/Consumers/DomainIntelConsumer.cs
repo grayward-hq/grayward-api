@@ -22,6 +22,11 @@ public record DomainIntel(
     DateTimeOffset CompletedAt,
     string? Error);
 
+public enum DomainIntelAiAvailability
+{
+    AVAILABLE, CIRCUIT_OPEN, UNKNOWN
+}
+
 public class DomainIntelConsumer : BackgroundService
 {
     private readonly string _queue;
@@ -163,24 +168,42 @@ public class DomainIntelConsumer : BackgroundService
 
         if (pending.Count == 0)
         {
+            _logger.LogDebug("No pending alerts for user {UserId}", userId);
             return;
         }
+
+        _logger.LogInformation(
+            "Flushing {AlertCount} pending alerts for user {UserId}",
+            pending.Count, userId);
 
         foreach (var alert in pending)
         {
             try
             {
+                _logger.LogDebug(
+                    "Delivering alert {AlertId} via {Channel} — Type: {AlertType}, Domain: {DomainId}",
+                    alert.Id, alert.Channel, alert.Type, alert.DomainId);
+
                 switch (alert.Channel)
                 {
                     case AlertChannel.Email:
                         await alertService.DeliverEmailAsync(scope, alert, ct);
+                        _logger.LogInformation(
+                            "Email alert delivered successfully — AlertId: {AlertId}, User: {UserId}, Domain: {DomainId}",
+                            alert.Id, userId, alert.DomainId);
                         break;
 
                     case AlertChannel.Slack:
                         await alertService.DeliverSlackAsync(alert, ct);
+                        _logger.LogInformation(
+                            "Slack alert delivered successfully — AlertId: {AlertId}, User: {UserId}, Domain: {DomainId}",
+                            alert.Id, userId, alert.DomainId);
                         break;
 
                     default:
+                        _logger.LogWarning(
+                            "Alert channel not implemented — Channel: {Channel}, AlertId: {AlertId}",
+                            alert.Channel, alert.Id);
                         alert.MarkFailed($"Channel {alert.Channel} not implemented.");
                         break;
                 }
@@ -188,12 +211,13 @@ public class DomainIntelConsumer : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Failed to flush alert {AlertId} via {Channel}",
-                    alert.Id, alert.Channel);
+                    "Failed to flush alert {AlertId} via {Channel} — User: {UserId}, Domain: {DomainId}, Error: {ErrorMessage}",
+                    alert.Id, alert.Channel, userId, alert.DomainId, ex.Message);
                 alert.MarkFailed(ex.Message);
             }
         }
 
         await alertRepo.SaveChangesAsync(ct);
+        _logger.LogInformation("Alert flush complete — {AlertCount} alerts processed", pending.Count);
     }
 }

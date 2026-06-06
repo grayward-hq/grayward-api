@@ -1,7 +1,10 @@
+using Application.Features.Dashboard.DTOs;
+using Application.Features.BrandProtection.DTOs;
 using Application.Features.Domain;
 using Application.Features.Scans;
 using Domain.Entities;
 using Domain.Enums;
+using Application.Features.BreachMonitoring.DTOs;
 
 namespace Application.Interfaces;
 
@@ -33,6 +36,27 @@ public interface IRefreshTokenRepository : IRepository<RefreshToken>
     Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct = default);
     Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct = default);  
 
+}
+
+public interface IBrandThreatRepository : IRepository<BrandThreat>
+{
+
+   Task<List<BrandThreat>> FindActiveByDomainNotInList(Guid domainId, List<string> checkedCandidates, CancellationToken ct = default);
+    Task<BrandThreat?> FindByDomainAndLookAlike(Guid domainId, string lookAlike, CancellationToken ct);
+    Task<List<BrandThreat>> FindActiveByDomain(Guid domainId, CancellationToken ct);
+    Task<List<BrandThreat>> FindByDomain(Guid domainId, CancellationToken ct);
+
+    Task<BrandThreat?> FindByIdAndDomain(Guid threatId, Guid domainId, CancellationToken ct);
+
+    Task<(List<BrandThreat> Items, int TotalCount)> GetPagedByDomain(
+    Guid domainId,
+    BrandThreatStatus? status,
+    BrandThreatRiskLevel? riskLevel,
+    int page,
+    int pageSize,
+    CancellationToken ct);
+
+Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface IDomainRepository : IRepository<ScannedDomain>
@@ -67,6 +91,22 @@ public interface IIntegrationRepository : IRepository<Integration>
     Task<Integration?> GetByUserAndProvider(Guid userId, IntegrationProvider provider, CancellationToken ct);
 }
 
+public interface IMonitoredEmailRepository : IRepository<MonitoredEmail>
+{
+    Task<List<MonitoredEmail>> GetByDomainId(Guid domainId, CancellationToken ct);
+    Task<List<MonitoredEmail>> FindByUser(Guid userId, CancellationToken ct);
+    Task<MonitoredEmail?> FindByDomainAndEmail(Guid domainId, string email, CancellationToken ct);
+    Task<MonitoredEmail?> FindById(Guid emailId, CancellationToken ct);
+    Task<int> CountByDomain(Guid domainId, CancellationToken ct);
+    Task<(List<MonitoredEmail> Items, int TotalCount)> GetPagedByDomain(
+        Guid domainId,
+        bool? isBreached,
+        int page,
+        int pageSize,
+        CancellationToken ct);
+    Task<MonitoredEmailSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
+}
+
 public interface INotificationPreferencesRepository : IRepository<NotificationPreferences>
 {
     Task<bool> ExistsForUser(Guid userId, CancellationToken ct);
@@ -79,6 +119,10 @@ public interface IScanRepository : IRepository<Scan>
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
+    Task<List<ScanScoreDto>> GetRecentCompletedScans(
+        Guid userId,
+        DateTime daysAgo,
+        CancellationToken ct);
     Task<(List<Scan> Items, int TotalCount)> GetPaged(ScanFilter filter, CancellationToken ct);
 }
 
