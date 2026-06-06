@@ -1,3 +1,5 @@
+using Application.Features.Alerts.BrandProtection;
+using Application.Features.Alerts.BreachMonitoring;
 using Application.Features.Alerts.DomainOwnershipWarning;
 using Application.Features.Alerts.ScanCompleted;
 using Application.Features.Alerts.SslExpiry;
@@ -15,7 +17,7 @@ public class AlertDispatcher(
     INotificationPreferencesRepository prefs,
     IDomainSettingsRepository domainSettings,
     IConfiguration config,
-    ILogger<AlertDispatcher> logger) : AlertHandlerBase(alerts, domainSettings)
+    ILogger<AlertDispatcher> logger) : AlertHandlerBase(alerts, domainSettings, logger)
 {
     private readonly INotificationPreferencesRepository _prefs = prefs;
     private readonly IConfiguration _config = config;
@@ -33,6 +35,12 @@ public class AlertDispatcher(
                 break;
             case DomainOwnershipWarningEvent e:
                 await HandleOwnershipWarning(e, ct);
+                break;
+            case BrandThreatDetectedEvent e:
+                await HandleBrandThreat(e, ct);
+                break;
+            case CredentialBreachEvent e:
+                await HandleCredentialBreach(e, ct);
                 break;
             default:
                 _logger.LogWarning("No handler registered for event type {EventType}",
@@ -63,8 +71,20 @@ public class AlertDispatcher(
 
     private async Task HandleScanCompleted(ScanCompletedEvent e, CancellationToken ct)
     {
+        _logger.LogInformation(
+            "Handling ScanCompleted event — Domain: {DomainName}, ScanId: {ScanId}, UserId: {UserId}",
+            e.DomainName, e.ScanId, e.UserId);
+
         var channels = await ResolveChannelsAsync(e.DomainId, ct);
         var deduplicationKey = e.ScanId.ToString();
+
+        if (channels.Count == 0)
+        {
+            _logger.LogWarning(
+                "No notification channels configured for domain {DomainName} (ID: {DomainId}) — scan alerts will not be sent",
+                e.DomainName, e.DomainId);
+            return;
+        }
 
         foreach (var channel in channels)
         {
@@ -79,7 +99,85 @@ public class AlertDispatcher(
                 continue;
             }
 
+            _logger.LogInformation(
+                "Creating ScanCompleted alert — Domain: {DomainName}, Channel: {Channel}, Severity: {FindingSeverities}",
+                e.DomainName, channel, string.Join(",", e.FindingSeverities));
+
             var alert = ScanCompletedAlertFactory.Create(e, channel);
+            await SaveAlertGuarded(alert, ct);
+        }
+    }
+
+    private async Task HandleBrandThreat(BrandThreatDetectedEvent e, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Handling BrandThreat event — Domain: {DomainName}, LookAlikeDomain: {LookAlikeDomain}, UserId: {UserId}",
+            e.DomainName, e.Threat.LookAlikeDomain, e.UserId);
+
+        var channels = await ResolveChannelsAsync(e.DomainId, ct);
+
+        var deduplicationKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+
+        if (channels.Count == 0)
+        {
+            _logger.LogWarning(
+                "No notification channels configured for domain {DomainName} (ID: {DomainId}) — scan alerts will not be sent",
+                e.DomainName, e.DomainId);
+            return;
+        }
+
+        foreach (var channel in channels)
+        {
+            var alreadyExists = await Alerts.ExistsForToday(
+                e.UserId, AlertType.BrandThreat, e.DomainId, channel, deduplicationKey, ct);
+
+            if (alreadyExists)
+            {
+                _logger.LogDebug(
+                    "Brand threat alert for {DomainName} via {Channel} already exists — skipping",
+                    e.DomainName, channel);
+                continue;
+            }
+
+            var alert = BrandThreatAlertFactory.Create(e, channel);
+            await SaveAlertGuarded(alert, ct);
+        }
+    }
+
+    private async Task HandleCredentialBreach(CredentialBreachEvent e, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Handling Credential Breach event — Domain: {DomainName}, Breached Email: {Email}, UserId: {UserId}",
+            e.DomainName, e.Email.EmailAddress, e.UserId);
+
+        var channels = await ResolveChannelsAsync(e.DomainId, ct);
+
+        var deduplicationKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+
+        if (channels.Count == 0)
+        {
+            _logger.LogWarning(
+                "No notification channels configured for domain {DomainName} (ID: {DomainId}) — scan alerts will not be sent",
+                e.DomainName, e.DomainId);
+            return;
+        }
+
+        foreach (var channel in channels)
+        {
+            var alreadyExists = await Alerts.ExistsForToday(
+                e.UserId, AlertType.CredentialBreach, e.DomainId, channel, deduplicationKey, ct);
+
+            if (alreadyExists)
+            {
+                _logger.LogDebug(
+                    "Credential Breach alert for {DomainName} via {Channel} already exists — skipping",
+                    e.DomainName, channel);
+                continue;
+            }
+
+            var alert = CredentialBreachAlertFactory.Create(e, channel);
             await SaveAlertGuarded(alert, ct);
         }
     }

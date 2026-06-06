@@ -4,6 +4,8 @@ using Application.Features.Scans;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Application.Features.Dashboard.DTOs;
+
 
 namespace Infrastructure.Persistence.Repositories;
 
@@ -32,6 +34,23 @@ public sealed class ScanRepository(VulnWatchDbContext db)
             .FirstOrDefaultAsync(s =>
                 s.IdempotencyKey == key &&
                 (s.Status == ScanStatus.Queued || s.Status == ScanStatus.Running), ct);
+
+    public Task<List<ScanScoreDto>> GetRecentCompletedScans(
+        Guid userId,
+        DateTime daysAgo,
+        CancellationToken ct) =>
+        Db.Scans
+            .Where(s => s.UserId == userId
+                    && s.Status == ScanStatus.Completed
+                    && s.CompletedAt >= daysAgo)
+            .Select(s => new ScanScoreDto
+            {
+                CompletedAt = s.CompletedAt,
+                SecurityScore = s.SecurityScore
+            })
+            .ToListAsync(ct);
+   
+
 
     public async Task<(List<Scan> Items, int TotalCount)> GetPaged(ScanFilter filter, CancellationToken ct)
     {

@@ -2,6 +2,7 @@ using Application.Features.Dashboard.DTOs;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Enums;
+using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,11 +46,11 @@ public class GetDashboardSummaryHandler(
                         s.Id,
                         s.SecurityScore,
                         s.CompletedAt,
-                        CriticalCount = s.Findings
-                            .Count(f => f.Status == FindingStatus.Open
-                                     && f.Severity == FindingSeverity.Critical),
-                        OpenCount = s.Findings
-                            .Count(f => f.Status == FindingStatus.Open)
+                        CriticalCount = s.Findings.Count(f => f.Status == FindingStatus.Open && f.Severity == FindingSeverity.Critical),
+                        HighCount = s.Findings.Count(f => f.Status == FindingStatus.Open && f.Severity == FindingSeverity.High),
+                        MediumCount = s.Findings.Count(f => f.Status == FindingStatus.Open && f.Severity == FindingSeverity.Medium),
+                        LowCount = s.Findings.Count(f => f.Status == FindingStatus.Open && f.Severity == FindingSeverity.Low),
+                        OpenCount = s.Findings.Count(f => f.Status == FindingStatus.Open)
                     })
                     .FirstOrDefault()
             })
@@ -107,6 +108,13 @@ public class GetDashboardSummaryHandler(
                 d.LatestScan.CompletedAt!.Value))
             .FirstOrDefault();
 
+        var severityBreakdown = new SeverityBreakdownDto(
+            Critical: domainData.Sum(d => d.LatestScan?.CriticalCount ?? 0),
+            High: domainData.Sum(d => d.LatestScan?.HighCount ?? 0),
+            Medium: domainData.Sum(d => d.LatestScan?.MediumCount ?? 0),
+            Low: domainData.Sum(d => d.LatestScan?.LowCount ?? 0)
+        );
+
         return Result<DashboardSummaryDto>.Success(new DashboardSummaryDto(
             TotalDomains: domainData.Count,
             VerifiedDomains: domainData.Count(d => d.VerificationStatus == VerificationStatus.Verified),
@@ -117,7 +125,8 @@ public class GetDashboardSummaryHandler(
             TotalOpenFindings: domainData.Sum(d => d.LatestScan?.OpenCount ?? 0),
             SslAlertsActive: sslAlertCount,
             MostUrgentSsl: mostUrgentSsl,
-            MostRecentScan: mostRecent));
+            MostRecentScan: mostRecent,
+            SeverityBreakdown: severityBreakdown));
     }
 
     private static string ClassifyPosture(int? avg, int totalCritical) =>
