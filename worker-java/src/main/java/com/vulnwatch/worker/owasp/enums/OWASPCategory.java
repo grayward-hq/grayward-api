@@ -1,9 +1,11 @@
 package com.vulnwatch.worker.owasp.enums;
 
 import lombok.Data;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
+@Getter
 public enum OWASPCategory {
     /**
      * Controls restricting what authenticated users can do are missing or misconfigured.
