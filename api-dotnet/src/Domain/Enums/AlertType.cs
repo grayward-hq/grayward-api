@@ -6,5 +6,8 @@ public enum AlertType
     ScanCompleted,
     CriticalFindingDetected,
     DomainStatusChanged,
-    SecurityScoreDrop
+    SecurityScoreDrop,
+    OwnershipWarning,
+    BrandThreat,
+    CredentialBreach
 }

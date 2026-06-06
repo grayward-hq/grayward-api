@@ -10,4 +10,5 @@ public record DomainSummary(
     DateTime CreatedAt,
     DateTime? UpdatedAt,
     DateTime? LastScannedAt,
-    int? LastSecurityScore);
+    int? LastSecurityScore,
+    DnsInstructions? Instructions);

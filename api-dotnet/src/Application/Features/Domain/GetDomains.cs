@@ -55,6 +55,15 @@ public class GetDomainsHandler(
                 .OrderByDescending(s => s.CompletedAt)
                 .FirstOrDefault();
 
+            DnsInstructions? instructions = null;
+
+            if (d.VerificationStatus == VerificationStatus.Pending && d.VerificationToken is not null)
+            {
+                instructions =  new DnsInstructions(
+                TxtRecord: $"_vulnwatch-verify",
+                Value: d.VerificationToken);
+            }
+
             return new DomainSummary(
                 d.Id,
                 d.DomainName,
@@ -62,7 +71,8 @@ public class GetDomainsHandler(
                 d.CreatedAt,
                 d.UpdatedAt,
                 latestScan?.CompletedAt,
-                latestScan?.SecurityScore);
+                latestScan?.SecurityScore,
+                null);
         }).ToList();
 
 

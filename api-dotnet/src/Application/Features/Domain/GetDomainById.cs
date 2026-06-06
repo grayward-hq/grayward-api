@@ -24,6 +24,15 @@ public class GetDomainByIdHandler(
             .Where(s => s.Status == ScanStatus.Completed)
             .OrderByDescending(s => s.CompletedAt)
             .FirstOrDefault();
+        
+        DnsInstructions? instructions = null;
+
+        if (domain.VerificationStatus == VerificationStatus.Pending && domain.VerificationToken is not null)
+        {
+            instructions =  new DnsInstructions(
+            TxtRecord: $"_vulnwatch-verify",
+            Value: domain.VerificationToken);
+        }
 
         return Result<DomainSummary>.Success(new DomainSummary(
             domain.Id,
@@ -32,6 +41,7 @@ public class GetDomainByIdHandler(
             domain.CreatedAt,
             domain.UpdatedAt,
             latestScan?.CompletedAt,
-            latestScan?.SecurityScore));
+            latestScan?.SecurityScore,
+            instructions));
     }
 }

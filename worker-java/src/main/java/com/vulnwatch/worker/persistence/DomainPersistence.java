@@ -2,9 +2,13 @@ package com.vulnwatch.worker.persistence;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -58,6 +62,14 @@ public class DomainPersistence {
             WHERE "Id" = ?
             """;
 
+    private static final String UPDATE_DOMAIN_SSL_EXPIRY = """
+            UPDATE "Domains"
+            SET
+                "SslCertExpiry" = ?,
+                "UpdatedAt" = ?
+            WHERE "Id" = ?
+            """;
+
     public DomainPersistence(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
         this.mapper = JsonMapper.builder()
@@ -67,6 +79,7 @@ public class DomainPersistence {
 
     public List<DomainFinding> saveFindings(
             String scanId,
+            String domainId,
             List<EngineResult> engineResults,
             List<AiResult> enrichments,
             int securityScore) {
@@ -77,6 +90,9 @@ public class DomainPersistence {
 
             insertFindings(findings);
             updateScan(scanId, securityScore);
+
+            extractSslCertExpiry(engineResults)
+                    .ifPresent(expiry -> updateDomainSslExpiry(domainId, expiry));
 
             log.info("Saved {} findings for scan {}", findings.size(), scanId);
 
@@ -112,12 +128,11 @@ public class DomainPersistence {
 
             String cveId = enrichment != null ? enrichment.cveId() : null;
 
-            String remediation =  
-                    enrichment != null  
-                            && enrichment.remediationSteps() != null  
-                            && !enrichment.remediationSteps().isEmpty()  
-                            ? String.join("\n", enrichment.remediationSteps())  
-                            : "Review engine output manually.";  
+            String remediation = enrichment != null
+                    && enrichment.remediationSteps() != null
+                    && !enrichment.remediationSteps().isEmpty()
+                            ? String.join("\n", enrichment.remediationSteps())
+                            : "Review engine output manually.";
 
             findings.add(new DomainFinding(
                     scanId,
@@ -180,13 +195,13 @@ public class DomainPersistence {
     private String formatPayload(EngineResult engine) {
 
         if (!engine.success()) {
-            try {  
-                return mapper.writeValueAsString(  
-                        Map.of("error", engine.errorMessage() == null ? "Unknown error" : engine.errorMessage()));  
-            } catch (Exception e) {  
-                log.warn("Failed to serialize error payload", e);  
-                return "{\"error\":\"Unknown error\"}";  
-            }  
+            try {
+                return mapper.writeValueAsString(
+                        Map.of("error", engine.errorMessage() == null ? "Unknown error" : engine.errorMessage()));
+            } catch (Exception e) {
+                log.warn("Failed to serialize error payload", e);
+                return "{\"error\":\"Unknown error\"}";
+            }
         }
 
         try {
@@ -223,8 +238,7 @@ public class DomainPersistence {
     }
 
     private void updateScan(String scanId, int securityScore) {
-
-        Timestamp now = Timestamp.from(Instant.now());
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         int updated = jdbc.update(
                 UPDATE_SCAN,
@@ -236,5 +250,37 @@ public class DomainPersistence {
         if (updated == 0) {
             throw new IllegalStateException("No scan row updated for scanId=" + scanId);
         }
+    }
+
+    private void updateDomainSslExpiry(String domainId, String certExpiry) {
+        if (certExpiry == null)
+            return;
+
+        try {
+            OffsetDateTime expiry = Instant.parse(certExpiry)
+                    .atOffset(ZoneOffset.UTC); // keep it UTC
+
+            int updated = jdbc.update(
+                    UPDATE_DOMAIN_SSL_EXPIRY,
+                    expiry, // pass OffsetDateTime directly
+                    OffsetDateTime.now(ZoneOffset.UTC),
+                    UUID.fromString(domainId));
+
+            if (updated == 0) {
+                log.warn("No domain row updated for domainId={}", domainId);
+            } else {
+                log.debug("Updated SslCertExpiry for domainId={} expiry={}", domainId, certExpiry);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to update SslCertExpiry for domainId={}: {}", domainId, e.getMessage());
+        }
+    }
+
+    private Optional<String> extractSslCertExpiry(List<EngineResult> engineResults) {
+        return engineResults.stream()
+                .filter(r -> r.success() && r.payload() instanceof SslPayload)
+                .map(r -> ((SslPayload) r.payload()).certExpiry())
+                .filter(Objects::nonNull)
+                .findFirst();
     }
 }

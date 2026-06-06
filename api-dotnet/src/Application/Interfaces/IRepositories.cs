@@ -1,3 +1,4 @@
+using Application.Features.Dashboard.DTOs;
 using Application.Features.Domain;
 using Application.Features.Scans;
 using Domain.Entities;
@@ -15,9 +16,14 @@ public interface IRepository<T> where T : class
 
 public interface IAlertRepository : IRepository<Alert>
 {
+    Task<List<Alert>> GetPendingByUser(Guid userId, int batchSize, CancellationToken ct);
+    Task<List<Alert>> GetRecentByDomain(Guid domainId, int limit, CancellationToken ct);
     Task<List<Alert>> GetPendingAsync(int batchSize, CancellationToken ct);
     Task<bool> HasRecentAlert(Guid userId, AlertType type, Guid? domainId,
         TimeSpan window, CancellationToken ct);
+    Task<bool> ExistsForToday(
+        Guid userId, AlertType type, Guid? domainId,
+        AlertChannel channel, string deduplicationKey, CancellationToken ct);
     void DetachUnsavedAlerts();
 }
 
@@ -26,11 +32,22 @@ public interface IRefreshTokenRepository : IRepository<RefreshToken>
     Task<RefreshToken?> GetById(Guid id, CancellationToken ct = default);
     Task<RefreshToken?> GetByToken(string rawToken, CancellationToken ct = default);
     Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct = default);
+    Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct = default);  
 
+}
+
+public interface IBrandThreatRepository : IRepository<BrandThreat>
+{
+
+   Task<List<BrandThreat>> FindActiveByDomainNotInList(Guid domainId, List<string> checkedCandidates, CancellationToken ct = default);
+    Task<BrandThreat?> FindByDomainAndLookAlike(Guid domainId, string lookAlike, CancellationToken ct);
+    Task<List<BrandThreat>> FindActiveByDomain(Guid domainId, CancellationToken ct);
+    Task<List<BrandThreat>> FindByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface IDomainRepository : IRepository<ScannedDomain>
 {
+    Task<List<ScannedDomain>> GetDomainsWithExpiringCertificates(DateTimeOffset maxLookahead, CancellationToken ct = default);
     Task<ScannedDomain?> GetById(Guid domainId, CancellationToken ct = default);
     Task<ScannedDomain?> FindUserDomainById(Guid userId, Guid domainId, CancellationToken ct);
     Task<ScannedDomain?> FindActive(string domain, CancellationToken ct);
@@ -42,6 +59,33 @@ public interface IDomainRepository : IRepository<ScannedDomain>
     Task<(IReadOnlyList<ScannedDomain>, int)> GetPaged(DomainFilter q, CancellationToken ct = default);
 }
 
+public interface IDomainSettingsRepository
+    : IRepository<DomainSettings>
+{
+    Task<DomainSettings?> GetByDomainId(
+        Guid domainId, CancellationToken ct);
+
+    // Used by the worker — fetch all domains due for a scan right now
+    Task<List<DomainSettings>> GetDueForScan(
+        DateTime asOf, int limit, CancellationToken ct);
+
+    Task<bool> ExistsForDomain(Guid domainId, CancellationToken ct);
+}
+
+public interface IIntegrationRepository : IRepository<Integration>
+{
+    Task<Integration?> GetByUserAndProvider(Guid userId, IntegrationProvider provider, CancellationToken ct);
+}
+
+public interface IMonitoredEmailRepository : IRepository<MonitoredEmail>
+{
+    Task<List<MonitoredEmail>> GetByDomainId(Guid domainId, CancellationToken ct);
+    Task<List<MonitoredEmail>> FindByUser(Guid userId, CancellationToken ct);
+    Task<MonitoredEmail?> FindByDomainAndEmail(Guid domainId, string email, CancellationToken ct);
+    Task<MonitoredEmail?> FindById(Guid emailId, CancellationToken ct);
+    Task<int> CountByDomain(Guid domainId, CancellationToken ct);
+}
+
 public interface INotificationPreferencesRepository : IRepository<NotificationPreferences>
 {
     Task<bool> ExistsForUser(Guid userId, CancellationToken ct);
@@ -50,9 +94,14 @@ public interface INotificationPreferencesRepository : IRepository<NotificationPr
 
 public interface IScanRepository : IRepository<Scan>
 {
+    Task<Scan?> FindLatestCompletedByDomain(Guid domainId, CancellationToken ct);
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
+    Task<List<ScanScoreDto>> GetRecentCompletedScans(
+        Guid userId,
+        DateTime daysAgo,
+        CancellationToken ct);
     Task<(List<Scan> Items, int TotalCount)> GetPaged(ScanFilter filter, CancellationToken ct);
 }
 

@@ -1,4 +1,5 @@
 using Application.Features.Auth.DTOs;
+using Application.Helpers;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Entities;
@@ -9,7 +10,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace Application.Features.Auth;
 
-public record LoginCommand(string Email, string Password) : IRequest<Result<AuthResponse>>;
+public record LoginCommand(string Email, string Password, string? IpAddress = null,
+    string? UserAgent = null) : IRequest<Result<AuthResponse>>;
 
 public class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
@@ -40,15 +42,26 @@ public class LoginHandler(
         if (!user.EmailConfirmed)
             return Result<AuthResponse>.Failure(Error.Forbidden("Your account has not been verified."));
 
-        var accessToken = jwt.GenerateToken(user);
+
         var refreshToken = jwt.GenerateRefreshToken();
 
-        var refreshTokenExpiryInDays = DateTime.UtcNow.AddMinutes(int.Parse(config["Jwt:RefreshTokenExpiryDays"]!));
+        var expireDays = int.TryParse(config["Jwt:RefreshTokenExpiryDays"], out var d) && d > 0 ? d : 7;  
+        var refreshTokenExpiryInDays = DateTime.UtcNow.AddDays(expireDays); 
 
-        await refreshTokenRepo.AddAsync(
-                RefreshToken.Create(user.Id, refreshToken, refreshTokenExpiryInDays),
-                ct);
+        var deviceName = DeviceNameParser.Parse(cmd.UserAgent);
+
+        var refreshTokenEntity = RefreshToken.Create(
+                user.Id,
+                refreshToken,
+                refreshTokenExpiryInDays,
+                ip: cmd.IpAddress,
+                deviceName: deviceName,
+                userAgent: cmd.UserAgent);
+
+        await refreshTokenRepo.AddAsync(refreshTokenEntity, ct);
         await refreshTokenRepo.SaveChangesAsync(ct);
+
+        var accessToken = jwt.GenerateToken(user, sessionId: refreshTokenEntity.Id);
 
         return Result<AuthResponse>.Success(AuthResponse.Create(accessToken, refreshToken));
     }

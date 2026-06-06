@@ -7,6 +7,8 @@ using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 
 
 namespace Application.Features.Domain;
@@ -15,6 +17,7 @@ public record VerifyDomainCommand(Guid DomainId) : IRequest<Result<VerifyDomainR
 
 public class VerifyDomainHandler(
     IDomainRepository domains,
+    IDomainSettingsRepository monitoringSettings,
     ICurrentUser currentUser,
     IDnsResolver dnsResolver,
     ILogger<VerifyDomainHandler> logger,
@@ -31,11 +34,9 @@ public class VerifyDomainHandler(
             return Result<VerifyDomainResponse>.Failure(
                 Error.NotFound("Domain not found."));
 
-        if (record.VerificationStatus != VerificationStatus.Pending)
+        if (record.VerificationStatus == VerificationStatus.Verified)
             return Result<VerifyDomainResponse>.Failure(
-                record.VerificationStatus == VerificationStatus.Verified
-                    ? Error.Conflict("Domain already verified.")
-                    : Error.Conflict("Domain is not pending verification."));
+                Error.Conflict("Domain is already verified."));
 
         if (config.GetValue<bool>("Dns:Lookup"))
         {
@@ -71,7 +72,34 @@ public class VerifyDomainHandler(
         }
 
         record.Verify();
-        await domains.SaveChangesAsync(ct);
+
+        try
+        {
+            var existing = await monitoringSettings.GetByDomainId(cmd.DomainId, ct);
+
+            if (existing is null)
+            {
+                var settings = DomainSettings.CreateDefault(cmd.DomainId);  
+                settings.RecordOwnershipConfirmed();  
+                await monitoringSettings.AddAsync(settings, ct); 
+            }
+            else
+            {
+                existing.Enable();
+                existing.RecordOwnershipConfirmed();
+            }
+
+            await domains.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (
+            ex is DbUpdateException or DbUpdateConcurrencyException)
+        {
+            logger.LogWarning(
+                "DomainSettings upsert conflict for {DomainId} — concurrent request",
+                cmd.DomainId);
+        }
+
+        
 
         return Result<VerifyDomainResponse>.Success(
             new VerifyDomainResponse(

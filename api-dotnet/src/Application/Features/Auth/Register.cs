@@ -17,8 +17,7 @@ public class RegisterHandler(
     UserManager<User> userManager,
     INotificationPreferencesRepository notifPrefs,
     IEmailService email,
-    IConfiguration config,
-    ILogger<RegisterHandler> logger) : IRequestHandler<RegisterCommand, Result<MessageResponse>>
+    IConfiguration config) : IRequestHandler<RegisterCommand, Result<MessageResponse>>
 {
 
     public async Task<Result<MessageResponse>> Handle(RegisterCommand cmd, CancellationToken ct)

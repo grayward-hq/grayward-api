@@ -45,7 +45,7 @@ public class RegisterDomainHandler : IRequestHandler<RegisterDomainCommand, Resu
         var existing = await _domains.GetByNameAndUser(domain, userId, ct);
 
         if (existing is not null)
-            return Result<RegisterDomainResponse>.Failure(Error.RateLimited("Domain already added"));
+            return Result<RegisterDomainResponse>.Failure(Error.Conflict("Domain already added"));
 
         var (rawToken, tokenHash) = _token.Generate();
 

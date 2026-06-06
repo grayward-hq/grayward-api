@@ -1,33 +1,43 @@
+using Application.Behaviours;
+using Application.Features.Alerts;
+using Application.Features.Alerts.SslExpiry;
 using Application.Features.Auth;
+using Application.Features.BreachMonitoring;
 using Application.Features.Scans;
+using Application.Helpers;
 using Application.Interfaces;
+using Application.Services;
+using DnsClient;
 using Domain.Entities;
 using FluentValidation;
 using Infrastructure.Persistence;
 using Infrastructure.Persistence.Repositories;
 using Infrastructure.Redis;
 using Infrastructure.Services;
-using Application.Helpers;
+using Infrastructure.Services.Chat;
+using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Infrastructure;
+using Serilog;
 using StackExchange.Redis;
 using System.Text;
 using System.Text.Json.Serialization;
+using Web.Configurations;
+using Web.Consumers;
 using Web.Extensions;
+using Web.Hubs;
 using Web.Middleware;
 using Web.Services;
-using MediatR;
-using Application.Behaviours;
-using DnsClient;
-using Web.Configurations;
-using Web.Hubs;
-using Serilog;
-using Web.Workers;
-using Web.Consumers;
-using Application.Services;
+using Web.Workers.Alerts;
+using Web.Workers.Monitoring;
+using Web.Workers.Monitoring.Jobs;
+using Web.Workers.Reapers;
 
 LoadDotEnv();
 
@@ -39,6 +49,7 @@ builder.Host.UseSerilog((ctx, config) =>
         .MinimumLevel.Information()
         .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
         .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Update", Serilog.Events.LogEventLevel.Fatal)
         .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
         .MinimumLevel.Override("StackExchange.Redis", Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
@@ -199,7 +210,6 @@ builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IDomainRepository, DomainRepository>();
 builder.Services.AddScoped<IScanRepository, ScanRepository>();
-builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<LookupClient>(_ =>
@@ -216,15 +226,68 @@ builder.Services.AddSingleton<LookupClient>(_ =>
                 )
             );
 builder.Services.AddScoped<IDnsResolver, DnsResolver>();
+builder.Services.AddScoped<SslExpiryChecker>();
 builder.Services.AddSignalR();
-// builder.Services.AddHostedService<ScanResultConsumer>();
 builder.Services.AddHostedService<DomainIntelConsumer>();
+builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddHostedService<AlertOutboxProcessor>();
 builder.Services.AddScoped<AlertDispatcher>();
-builder.Services.AddHostedService<SslExpiryChecker>();
+builder.Services.AddScoped<ScanDispatchService>();
+builder.Services.AddScoped<SslExpiryCheckService>();
+builder.Services.AddScoped<OwnershipCheckService>();
+builder.Services.AddHostedService<MonitoringWorker>();
+builder.Services.AddHostedService<ScanReaperWorker>();
 builder.Services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
+builder.Services.AddScoped<IDomainSettingsRepository, DomainSettingsRepository>();
+builder.Services.AddHttpClient("anthropic");  // base URL set per-request in the service
+builder.Services.AddHttpClient("gemini");     // base URL set per-request in the service
+builder.Services
+        .AddHttpClient("openai", client =>
+        {
+            // Works for both OpenAI and Groq — base URL differs by key config
+            var baseUrl = builder.Configuration["Chat:OpenAi:BaseUrl"] ?? "https://api.openai.com";
+            var apiKey  = builder.Configuration["Chat:OpenAi:ApiKey"] ?? "";
 
+            client.BaseAddress = new Uri(baseUrl);
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        });
+builder.Services.AddScoped<ClaudeService>();
+builder.Services.AddScoped<AnthropicChatService>();
+builder.Services.AddScoped<GeminiChatService>();
+builder.Services.AddScoped<OpenAiChatService>();
+builder.Services.AddScoped<IChatServiceFactory, ChatServiceFactory>();
+builder.Services.AddScoped<IChatService>(sp =>
+        sp.GetRequiredService<IChatServiceFactory>().Resolve());
+
+builder.Services.AddHttpClient("slack");
+builder.Services.AddScoped<ISlackService, SlackService>();
+builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
+builder.Services.AddDataProtection()
+        .PersistKeysToDbContext<VulnWatchDbContext>()
+        .SetApplicationName("VulnWatch");
+builder.Services.AddHostedService<DomainVerificationReaper>();
+builder.Services.AddScoped<OwaspEvaluationEngine>();
+builder.Services.AddHttpClient("BrandProtection", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AllowAutoRedirect = true,
+    MaxAutomaticRedirections = 3,
+    ServerCertificateCustomValidationCallback =
+        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator // lookalikes may have bad certs
+});
+builder.Services.AddScoped<HaveIBeenPwnedService>();
+builder.Services.AddScoped<BreachMonitoringService>();
+builder.Services.AddScoped<BrandProtectionCheckService>();
+builder.Services.AddScoped<LookAlikeDomainChecker>();
+builder.Services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
+builder.Services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
+
+QuestPDF.Settings.License = LicenseType.Community;
+        
 var corsSettings = builder.Configuration
     .GetSection("Cors")
     .Get<CorsOptions>();
@@ -249,6 +312,18 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Configure ForwardedHeaders middleware for reverse proxy scenarios
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    // Accept X-Forwarded-For, X-Forwarded-Proto headers
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    
+    // For Azure App Service, Docker behind proxy, etc.
+    // If behind a known proxy, add its IP/network; otherwise clear known proxies to accept all
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.AddAppRateLimiting(builder.Configuration);
 
 builder.Services.AddHealthChecks()
@@ -261,12 +336,17 @@ builder.Services.AddHealthChecks()
         name: "redis",
         tags: ["cache", "ready"]);
 
+builder.Services.Configure<RouteOptions>(options => options.LowercaseUrls = true);
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<VulnWatchDbContext>();
-    dbContext.Database.Migrate();
+    if (dbContext.Database.IsRelational())
+        dbContext.Database.Migrate();
+    else
+        dbContext.Database.EnsureCreated();
 }
 
 app.UseSwagger();
@@ -276,6 +356,7 @@ app.UseSwaggerUI(options =>
     options.RoutePrefix = "docs";
 });
 app.UseHttpsRedirection();
+app.UseForwardedHeaders();
 app.UseCors("DefaultCors");
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
@@ -350,3 +431,6 @@ static IEnumerable<string> ResolveDotEnvCandidates()
         Path.GetFullPath(Path.Combine(appBaseDirectory, "..", "..", "..", "..", "..", ".env"))
     }.Distinct(StringComparer.OrdinalIgnoreCase);
 }
+
+
+public partial class Program { }

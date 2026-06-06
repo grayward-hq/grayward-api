@@ -1,4 +1,4 @@
-# [Database Schema task] Integration Guide
+# API Integration Guide
 
 ## Overview
 

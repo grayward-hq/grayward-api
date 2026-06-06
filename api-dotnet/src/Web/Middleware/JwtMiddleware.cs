@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Application.Interfaces;
+using Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -31,7 +32,10 @@ public class JwtMiddleware
                     new[]
                     {
                         new Claim(ClaimTypes.NameIdentifier, claims.UserId.ToString()),
-                        new Claim(ClaimTypes.Email,          claims.Email)
+                        new Claim(ClaimTypes.Email,          claims.Email),
+                        new Claim(AppClaimTypes.FirstName, claims.FirstName ?? string.Empty),
+                        new Claim(AppClaimTypes.LastName,  claims.LastName ?? string.Empty),
+                        new Claim(AppClaimTypes.Picture,   claims.ProfilePictureUrl ?? string.Empty),
                     },
                     authenticationType: "Bearer"
                 );

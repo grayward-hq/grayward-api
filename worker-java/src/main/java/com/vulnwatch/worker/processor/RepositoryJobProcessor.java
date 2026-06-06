@@ -1,6 +1,6 @@
 package com.vulnwatch.worker.processor;
 
-import com.vulnwatch.worker.ai.repository.AnthropicEnricher;
+import com.vulnwatch.worker.ai.repository.SpringAiRepositoryEnricher;
 import com.vulnwatch.worker.engine.repository.ScanEngine;
 import com.vulnwatch.worker.persistence.RepositoryPersistence;
 import com.vulnwatch.worker.service.GithubService;
@@ -8,11 +8,10 @@ import com.vulnwatch.worker.model.ScanJob;
 import com.vulnwatch.worker.model.RepositoryIntel;
 import com.vulnwatch.worker.model.DependencyFinding;
 import com.vulnwatch.worker.publisher.RepositoryIntelPublisher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,40 +27,27 @@ import java.util.Map;
  *   5. Persist to DB
  *   6. Publish notification event to Redis for .NET API
  */
-// @Component
+@Slf4j
+@Component
+@RequiredArgsConstructor
 public class RepositoryJobProcessor implements JobProcessor {
-
-    private static final Logger log = LoggerFactory.getLogger(RepositoryJobProcessor.class);
 
     private final GithubService gitHubService;
     private final Map<String, ScanEngine> scanners;   // keyed by manifest filename
-    private final AnthropicEnricher aiEnrichmentService;
+    private final SpringAiRepositoryEnricher aiEnrichmentService;
     private final RepositoryPersistence repo;
     private final RepositoryIntelPublisher redisPublisher;
-
-    public RepositoryJobProcessor(
-            GithubService gitHubService,
-            Map<String, ScanEngine> scanners,
-            AnthropicEnricher aiEnrichmentService,
-            RepositoryPersistence repo,
-            RepositoryIntelPublisher redisPublisher) {
-        this.gitHubService = gitHubService;
-        this.scanners = scanners;
-        this.aiEnrichmentService = aiEnrichmentService;
-        this.repo = repo;
-        this.redisPublisher = redisPublisher;
-    }
 
     @Override
     public void process(ScanJob job) {
         log.info("[{}] Starting repository scan for repoId={}", job.scanId(), job.repoId());
 
         try {
-            // ── Step 1: Fetch the repo file tree ──────────────────────────
+
             List<String> filePaths = gitHubService.getFilePaths(job.repoId());
             log.debug("[{}] Found {} files in repo", job.scanId(), filePaths.size());
 
-            // ── Step 2: Find ALL matching scanners ────────────────────────
+            //  Find ALL matching scanners
             // LinkedHashMap preserves insertion order (root manifests found first)
             Map<ScanEngine, String> matched = resolveAllScanners(filePaths);
 
@@ -74,10 +60,10 @@ public class RepositoryJobProcessor implements JobProcessor {
 
             log.info("[{}] Found {} ecosystem(s): {}", job.scanId(), matched.size(),
                     matched.keySet().stream()
-                            .map(s -> s.manifestFilename())
+                            .map(ScanEngine::manifestFilename)
                             .toList());
 
-            // ── Step 3 & 4: Parse + enrich per ecosystem ──────────────────
+            // Parse + enrich per ecosystem
             // Keyed by ecosystem name ("npm", "maven", etc.) for the merged result
             Map<String, List<DependencyFinding>> enrichedByEcosystem = new LinkedHashMap<>();
 
@@ -120,14 +106,14 @@ public class RepositoryJobProcessor implements JobProcessor {
                 return;
             }
 
-            // ── Step 5: Merge and persist ─────────────────────────────────
+            // Merge and persist
             RepositoryIntel result = RepositoryIntel.of(job, enrichedByEcosystem);
             repo.save(result);
             log.info("[{}] Scan results persisted. Ecosystems: {} | Total deps: {} | Vulnerable: {}",
                     job.scanId(), enrichedByEcosystem.keySet(),
                     result.totalDependencies(), result.vulnerableCount());
 
-            // ── Step 6: Notify .NET API via Redis ─────────────────────────
+            // Notify .NET API via Redis
             redisPublisher.publishSuccess(job, result);
             log.info("[{}] Notification event pushed to Redis", job.scanId());
 
@@ -142,24 +128,21 @@ public class RepositoryJobProcessor implements JobProcessor {
      * Returns a map of scanner → manifest path, preserving root-first order.
      *
      * e.g. a monorepo with both package.json and pom.xml returns both.
-     * 
-     * The current resolveAllScanners method assumes filePaths  
-     * are root-first but they may be arbitrary; update resolveAllScanners to ensure  
-     * shallowest (root-most) manifest wins by either sorting filePaths by path depth  
-     * ascending before the for-loop or by computing depth per path and, when  
-     * encountering an existing manifest filename in matchedByFilename, compare depths  
-     * and replace the stored entry if the new path is shallower; reference the  
-     * resolveAllScanners method and the matchedByFilename/result maps and ensure you  
-     * update result.put(scanner, path) and matchedByFilename accordingly when  
-     * replacing a deeper match. 
+     *
+     * Shallowest (root-most) manifest wins per filename — if a deeper path is
+     * encountered for an already-matched filename, it is replaced only if the
+     * new path is shallower.
      */
     private Map<ScanEngine, String> resolveAllScanners(List<String> filePaths) {
-        // Track which scanner types we've already matched to avoid duplicate ecosystems
-        // (e.g. root package.json + packages/app/package.json — prefer the root one)
         Map<String, ScanEngine> matchedByFilename = new LinkedHashMap<>();
         Map<ScanEngine, String> result = new LinkedHashMap<>();
 
-        for (String path : filePaths) {
+        // Sort ascending by path depth so root-level manifests are processed first
+        List<String> sorted = filePaths.stream()
+                .sorted((a, b) -> depth(a) - depth(b))
+                .toList();
+
+        for (String path : sorted) {
             String filename = path.contains("/")
                     ? path.substring(path.lastIndexOf('/') + 1)
                     : path;
@@ -167,13 +150,26 @@ public class RepositoryJobProcessor implements JobProcessor {
             ScanEngine scanner = scanners.get(filename);
             if (scanner == null) continue;
 
-            // Only take the first (shallowest) occurrence per manifest type
             if (!matchedByFilename.containsKey(filename)) {
                 matchedByFilename.put(filename, scanner);
                 result.put(scanner, path);
+            } else {
+                // Replace if this path is shallower than the currently stored one
+                String existing = result.get(matchedByFilename.get(filename));
+                if (depth(path) < depth(existing)) {
+                    ScanEngine previous = matchedByFilename.get(filename);
+                    result.remove(previous);
+                    matchedByFilename.put(filename, scanner);
+                    result.put(scanner, path);
+                }
             }
         }
 
         return result;
+    }
+
+    /** Returns the number of path segments (depth) for a given path string. */
+    private static int depth(String path) {
+        return (int) path.chars().filter(c -> c == '/').count();
     }
 }

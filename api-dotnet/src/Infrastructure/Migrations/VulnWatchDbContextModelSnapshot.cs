@@ -83,11 +83,146 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("IX_Alerts_UserId_CreatedAt");
 
-                    b.HasIndex("UserId", "Type", "DomainId", "DeduplicationKey")
+                    b.HasIndex("UserId", "Type", "DomainId", "Channel", "DeduplicationKey")
                         .IsUnique()
                         .HasDatabaseName("IX_Alerts_Deduplication");
 
                     b.ToTable("Alerts");
+                });
+
+            modelBuilder.Entity("Domain.Entities.BrandThreat", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DomainId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("HttpStatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HttpTitle")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LookAlikeDomain")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)");
+
+                    b.Property<bool>("RedirectsToOriginal")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolvedIpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<bool>("ResolvesViaDns")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RespondedViaHttp")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RiskLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VariationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId")
+                        .HasDatabaseName("IX_BrandThreats_DomainId");
+
+                    b.HasIndex("DomainId", "LookAlikeDomain")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BrandThreats_DomainId_LookAlikeDomain");
+
+                    b.HasIndex("DomainId", "Status")
+                        .HasDatabaseName("IX_BrandThreats_DomainId_Status");
+
+                    b.ToTable("BrandThreats");
+                });
+
+            modelBuilder.Entity("Domain.Entities.DomainSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DomainId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastMonitoredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("MonitoringEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("NextBreachCheckAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("NotificationChannel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OwnershipFailedSince")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("OwnershipLastConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ScanFrequency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SslAlertThresholds")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("SslAlertThresholds");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DomainSettings_DomainId");
+
+                    b.HasIndex("MonitoringEnabled", "NextScheduledAt")
+                        .HasDatabaseName("IX_DomainSettings_DueForScan")
+                        .HasFilter("\"MonitoringEnabled\" = true");
+
+                    b.ToTable("DomainSettings");
                 });
 
             modelBuilder.Entity("Domain.Entities.Finding", b =>
@@ -154,6 +289,10 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Metadata")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasColumnType("text");
@@ -174,6 +313,60 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_Integrations_UserId_Status");
 
                     b.ToTable("Integrations");
+                });
+
+            modelBuilder.Entity("Domain.Entities.MonitoredEmail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BreachCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DomainId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<bool>("IsBreached")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LatestDetectionAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DomainId")
+                        .HasDatabaseName("IX_MonitoredEmails_DomainId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_MonitoredEmails_UserId");
+
+                    b.HasIndex("DomainId", "EmailAddress")
+                        .IsUnique()
+                        .HasDatabaseName("IX_MonitoredEmails_DomainId_EmailAddress");
+
+                    b.ToTable("MonitoredEmails");
                 });
 
             modelBuilder.Entity("Domain.Entities.MonitoredRepository", b =>
@@ -265,7 +458,13 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(45)
                         .HasColumnType("character varying(45)");
 
+                    b.Property<string>("DeviceName")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastUsedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("RevokedAt")
@@ -278,6 +477,9 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -403,6 +605,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("SslCertExpiry")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("TokenIssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -424,6 +632,10 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("UserId", "VerificationStatus");
+
+                    b.HasIndex("VerificationStatus", "SslCertExpiry")
+                        .HasDatabaseName("IX_ScannedDomains_Verified_SslCertExpiry")
+                        .HasFilter("\"VerificationStatus\" = 'Verified' AND \"SslCertExpiry\" IS NOT NULL");
 
                     b.ToTable("Domains");
                 });
@@ -576,6 +788,25 @@ namespace Infrastructure.Migrations
                     b.ToTable("WebHookOutBox");
                 });
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
                 {
                     b.Property<Guid>("Id")
@@ -706,6 +937,28 @@ namespace Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.BrandThreat", b =>
+                {
+                    b.HasOne("Domain.Entities.ScannedDomain", "Domain")
+                        .WithMany("BrandThreats")
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Domain");
+                });
+
+            modelBuilder.Entity("Domain.Entities.DomainSettings", b =>
+                {
+                    b.HasOne("Domain.Entities.ScannedDomain", "Domain")
+                        .WithOne()
+                        .HasForeignKey("Domain.Entities.DomainSettings", "DomainId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Domain");
+                });
+
             modelBuilder.Entity("Domain.Entities.Finding", b =>
                 {
                     b.HasOne("Domain.Entities.Scan", "Scan")
@@ -726,6 +979,15 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Entities.MonitoredEmail", b =>
+                {
+                    b.HasOne("Domain.Entities.ScannedDomain", null)
+                        .WithMany("MonitoredEmails")
+                        .HasForeignKey("DomainId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Domain.Entities.MonitoredRepository", b =>
@@ -869,6 +1131,10 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.ScannedDomain", b =>
                 {
+                    b.Navigation("BrandThreats");
+
+                    b.Navigation("MonitoredEmails");
+
                     b.Navigation("Scans");
                 });
 #pragma warning restore 612, 618

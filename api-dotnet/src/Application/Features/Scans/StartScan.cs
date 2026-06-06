@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using System.Data;
 using Application.Features.Scans.DTOs;
 using FluentValidation;
+using Microsoft.Extensions.Configuration;
 
 namespace Application.Features.Scans;
 
@@ -42,8 +43,9 @@ public class StartScanHandler : IRequestHandler<StartScanCommand, Result<StartSc
     private readonly IDomainRepository _domainRepo;
     private readonly IRedisService _redis;
     private readonly ILogger<StartScanHandler> _logger;
+    private readonly string _scanJobsQueue;
 
-    public StartScanHandler(IVulnWatchDbContext context, ICurrentUser currentUser, IScanRepository scanRepo, IDomainRepository domainRepo, IRedisService redis, ILogger<StartScanHandler> logger)
+    public StartScanHandler(IVulnWatchDbContext context, ICurrentUser currentUser, IScanRepository scanRepo, IDomainRepository domainRepo, IRedisService redis, ILogger<StartScanHandler> logger, IConfiguration config)
     {
         _context = context;
         _currentUser = currentUser;
@@ -51,6 +53,7 @@ public class StartScanHandler : IRequestHandler<StartScanCommand, Result<StartSc
         _domainRepo = domainRepo;
         _redis = redis;
         _logger = logger;
+        _scanJobsQueue = config["Worker:ScanJobsQueue"] ?? "scan-jobs";
     }
 
     public async Task<Result<StartScanResponse>> Handle(StartScanCommand cmd, CancellationToken ct)
@@ -100,7 +103,7 @@ public class StartScanHandler : IRequestHandler<StartScanCommand, Result<StartSc
             await tx.CommitAsync(ct);
 
             // Publish after commit — worker only sees jobs backed by a committed row
-            await _redis.PublishScanJob("scan-jobs", new ScanJob(
+            await _redis.PublishScanJob(_scanJobsQueue, new ScanJob(
                 domain.Id, domain.DomainName, scan.Id,
                 ScanTargetType.Domain.ToString(), scan.SurfaceTypes.ToString(),  userId, scan.CreatedAt), ct);
 

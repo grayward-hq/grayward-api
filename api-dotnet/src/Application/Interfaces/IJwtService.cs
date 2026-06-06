@@ -3,11 +3,12 @@ using Domain.Entities;
 
 namespace Application.Interfaces;
 
-public record TokenClaims(Guid UserId, string Email);
+// public record TokenClaims(Guid UserId, string Email);
+public record TokenClaims(Guid UserId, string Email, string? FirstName, string? LastName, string? ProfilePictureUrl);
 
 public interface IJwtService
 {
-    string GenerateToken(User user);
+    string GenerateToken(User user, Guid? sessionId);
 
     Result<TokenClaims> ValidateAccessToken(string token);
 
