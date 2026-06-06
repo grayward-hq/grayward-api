@@ -76,11 +76,24 @@ public class ComplianceController(IMediator mediator) : ControllerBase
         return result.ToHttpResponse(this);
     }
 
-    [HttpGet("monitored-emails/{domainId:guid}")]
-    public async Task<ActionResult<Result<List<MonitoredEmailDto>>>> GetAll(
-        Guid domainId, CancellationToken ct)
-        => (await mediator.Send(new GetMonitoredEmailsQuery(domainId), ct))
-            .ToHttpResponse(this);
+    // [HttpGet("monitored-emails/{domainId:guid}")]
+    // public async Task<ActionResult<Result<List<MonitoredEmailDto>>>> GetAll(
+    //     Guid domainId, CancellationToken ct)
+    //     => (await mediator.Send(new GetMonitoredEmailsQuery(domainId), ct))
+    //         .ToHttpResponse(this);
+
+    [HttpGet("domains/{domainId:guid}/monitored-emails")]
+    public async Task<ActionResult<Result<MonitoredEmailsPagedDto>>> GetMonitoredEmails(
+    Guid domainId,
+    [FromQuery] bool? isBreached = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 20,
+    CancellationToken ct = default)
+    {
+        var result = await mediator.Send(
+            new GetMonitoredEmailsPagedQuery(domainId, isBreached, page, pageSize), ct);
+        return result.ToHttpResponse(this);
+    }
 
     [HttpPost("monitored-emails")]
     public async Task<ActionResult<Result<MonitoredEmailDto>>> Add(

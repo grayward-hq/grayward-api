@@ -39,7 +39,7 @@ public class GetBrandThreatsHandler(
 
         var summary = await brandThreatRepo.GetSummaryByDomain(query.DomainId, ct);
 
-        var ctx = http.HttpContext!;
+        var ctx = http.HttpContext ?? throw new InvalidOperationException("HttpContext is not available.");
         var dtos = items.Select(BrandThreatDto.From).ToList();
 
         var paged = PagedResult<BrandThreatDto>.From(
