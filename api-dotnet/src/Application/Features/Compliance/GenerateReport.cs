@@ -52,11 +52,11 @@ public class GenerateReportHandler(
 
         var owaspResult = owaspEngine.Evaluate(deduplicatedFindings);
 
-    //     logger.LogInformation("=== OWASP RESULT ===\nScore: {Score} | Tier: {Tier}\nCategories:\n{Categories}",
-    // owaspResult.OverallScore,
-    // owaspResult.ComplianceTier,
-    // string.Join("\n", owaspResult.Categories.Select(c =>
-    //     $"  {c.Code} {c.Name} | Status: {c.ComplianceStatus} | Score: {c.Score} | Details: {string.Join(", ", c.TechnicalDetails)}")));
+        //     logger.LogInformation("=== OWASP RESULT ===\nScore: {Score} | Tier: {Tier}\nCategories:\n{Categories}",
+        // owaspResult.OverallScore,
+        // owaspResult.ComplianceTier,
+        // string.Join("\n", owaspResult.Categories.Select(c =>
+        //     $"  {c.Code} {c.Name} | Status: {c.ComplianceStatus} | Score: {c.Score} | Details: {string.Join(", ", c.TechnicalDetails)}")));
 
         var prompt = BuildSummaryPrompt(domain.DomainName, scanWithFindings, owaspResult, deduplicatedFindings);
 
@@ -95,7 +95,7 @@ public class GenerateReportHandler(
                 page.Margin(2, QuestPDF.Infrastructure.Unit.Centimetre);
 
                 page.Header().Element(c => ComposeHeader(c, domain.DomainName));
-                page.Content().Element(c => 
+                page.Content().Element(c =>
                 ComposeContent(c, domain, scan, owasp, summary, findings));
                 page.Footer().Element(ComposeFooter);
             });
@@ -120,50 +120,50 @@ public class GenerateReportHandler(
     }
 
     private string BuildSummaryPrompt(string domainName, Scan scan, OwaspEvaluationResult owasp, List<Finding> findings)
-{
-    // OWASP non-compliant categories
-    var nonCompliantCategories = owasp.Categories
-        .Where(c => c.ComplianceStatus != "Compliant")
-        .Select(c =>
-        {
-            var details = c.TechnicalDetails.Any()
-                ? $" ({string.Join("; ", c.TechnicalDetails.Take(3))})"
-                : "";
-            return $"- {c.Code} {c.Name} [{c.ComplianceStatus}]{details}";
-        })
-        .ToList();
+    {
+        // OWASP non-compliant categories
+        var nonCompliantCategories = owasp.Categories
+            .Where(c => c.ComplianceStatus != "Compliant")
+            .Select(c =>
+            {
+                var details = c.TechnicalDetails.Any()
+                    ? $" ({string.Join("; ", c.TechnicalDetails.Take(3))})"
+                    : "";
+                return $"- {c.Code} {c.Name} [{c.ComplianceStatus}]{details}";
+            })
+            .ToList();
 
-    var owaspSection = nonCompliantCategories.Any()
-        ? string.Join("\n", nonCompliantCategories)
-        : "All OWASP categories passed.";
+        var owaspSection = nonCompliantCategories.Any()
+            ? string.Join("\n", nonCompliantCategories)
+            : "All OWASP categories passed.";
 
-    // Open findings grouped by surface with technical details
-    var openFindings = findings  // ← use param instead of scan.Findings
-        .Where(f => f.Status == FindingStatus.Open)
-        .OrderBy(f => f.Severity)
-        .ToList();
+        // Open findings grouped by surface with technical details
+        var openFindings = findings  // ← use param instead of scan.Findings
+            .Where(f => f.Status == FindingStatus.Open)
+            .OrderBy(f => f.Severity)
+            .ToList();
 
-    var findingsSection = openFindings.Any()
-        ? string.Join("\n", openFindings.Select(f =>
-        {
-            var enriched = EnrichedFinding.From(f);
-            var techDetail = BuildFindingDetail(enriched);
-            var detail = string.IsNullOrWhiteSpace(techDetail) ? "" : $" → {techDetail}";
-            return $"- [{f.Severity}] {f.Surface}: {f.Title}{detail}";
-        }))
-        : "No open findings.";
+        var findingsSection = openFindings.Any()
+            ? string.Join("\n", openFindings.Select(f =>
+            {
+                var enriched = EnrichedFinding.From(f);
+                var techDetail = BuildFindingDetail(enriched);
+                var detail = string.IsNullOrWhiteSpace(techDetail) ? "" : $" → {techDetail}";
+                return $"- [{f.Severity}] {f.Surface}: {f.Title}{detail}";
+            }))
+            : "No open findings.";
 
-    // Severity counts for context
-    var critical = openFindings.Count(f => f.Severity == FindingSeverity.Critical);
-    var high     = openFindings.Count(f => f.Severity == FindingSeverity.High);
-    var medium   = openFindings.Count(f => f.Severity == FindingSeverity.Medium);
-    var low      = openFindings.Count(f => f.Severity == FindingSeverity.Low);
+        // Severity counts for context
+        var critical = openFindings.Count(f => f.Severity == FindingSeverity.Critical);
+        var high = openFindings.Count(f => f.Severity == FindingSeverity.High);
+        var medium = openFindings.Count(f => f.Severity == FindingSeverity.Medium);
+        var low = openFindings.Count(f => f.Severity == FindingSeverity.Low);
 
-    var instruction = openFindings.Any()
-        ? "Reference the OWASP score and at least two specific findings by name. End with the single highest-priority remediation action."
-        : "Acknowledge the clean scan. Mention what protections are confirmed to be in place. End with a recommendation to maintain this posture.";
+        var instruction = openFindings.Any()
+            ? "Reference the OWASP score and at least two specific findings by name. End with the single highest-priority remediation action."
+            : "Acknowledge the clean scan. Mention what protections are confirmed to be in place. End with a recommendation to maintain this posture.";
 
-    return $"""
+        return $"""
         You are writing an executive summary for a security scan report. Use ONLY the data below.
         Do NOT give generic advice. Write exactly 3 sentences. No bullets. No headers. No markdown.
 
@@ -181,7 +181,7 @@ public class GenerateReportHandler(
 
         {instruction}
         """;
-}
+    }
     private void ComposeContent(IContainer container, ScannedDomain domain, Scan scan,
     OwaspEvaluationResult owasp, string executiveSummary, List<Finding> findings)
     {
@@ -262,7 +262,7 @@ public class GenerateReportHandler(
             {
                 c.Item().PaddingBottom(6).Text("Findings").FontSize(14).Bold();
 
-                var openFindings = findings 
+                var openFindings = findings
                     .Where(f => f.Status == FindingStatus.Open)
                     .OrderBy(f => f.Severity)
                     .ToList();
@@ -358,16 +358,22 @@ public class GenerateReportHandler(
         if (e.HttpHeaders is { } h)
         {
             var parts = new List<string>();
-            if (h.MissingHeaders.Any())
+            if (h.MissingHeaders?.Any() == true)
                 parts.Add($"Missing: {string.Join(", ", h.MissingHeaders.Take(3))}");
-            if (h.ServerHeader != null)
+            if (!string.IsNullOrWhiteSpace(h.ExposedTechnology))
+                parts.Add($"Tech: {h.ExposedTechnology}");
+            if (!string.IsNullOrWhiteSpace(h.ServerHeader))
                 parts.Add($"Server: {h.ServerHeader}");
             return string.Join(" | ", parts);
         }
 
         if (e.Ssl is { } ssl)
         {
-            var parts = new List<string> { ssl.Protocol, ssl.CipherSuite };
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(ssl.Protocol))
+                parts.Add(ssl.Protocol);
+            if (!string.IsNullOrWhiteSpace(ssl.CipherSuite))
+                parts.Add(ssl.CipherSuite);
             if (ssl.DaysUntilExpiry < 60)
                 parts.Add($"Expires in {ssl.DaysUntilExpiry}d");
             return string.Join(" | ", parts);

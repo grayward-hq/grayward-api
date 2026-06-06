@@ -26,6 +26,7 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     public DbSet<Remediation> Remediations => Set<Remediation>();
     public DbSet<Integration> Integrations => Set<Integration>();
     public DbSet<MonitoredEmail> MonitoredEmails => Set<MonitoredEmail>();
+    public DbSet<OwaspMapping> OwaspMappings => Set<OwaspMapping>();
     public DbSet<MonitoredRepository> MonitoredRepositories => Set<MonitoredRepository>();
     public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
     public DbSet<WebHookOutBox> WebHookOutBox => Set<WebHookOutBox>();
@@ -151,6 +152,56 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .WithMany(d => d.MonitoredEmails)
                 .HasForeignKey(e => e.DomainId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<OwaspMapping>(e =>
+        {
+
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ScanId)
+                .IsRequired();
+
+            e.Property(x => x.FindingId)
+                .IsRequired();
+
+            e.Property(x => x.CategoryCode)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            e.Property(x => x.CategoryName)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            e.Property(x => x.FindingLabel)
+                .HasMaxLength(500);
+
+            e.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            e.Property(x => x.Severity)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+
+            e.HasOne(x => x.Scan)
+                .WithMany()
+                .HasForeignKey(x => x.ScanId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.Finding)
+                .WithMany()
+                .HasForeignKey(x => x.FindingId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => new
+            {
+                x.ScanId,
+                x.FindingId,
+                x.CategoryCode
+            }).IsUnique();
         });
 
         builder.Entity<BrandThreat>(e =>
