@@ -22,6 +22,11 @@ public record DomainIntel(
     DateTimeOffset CompletedAt,
     string? Error);
 
+public enum DomainIntelAiAvailability
+{
+    AVAILABLE, CIRCUIT_OPEN, UNKNOWN
+}
+
 public class DomainIntelConsumer : BackgroundService
 {
     private readonly string _queue;
