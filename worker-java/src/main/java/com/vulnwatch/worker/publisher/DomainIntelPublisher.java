@@ -1,69 +1,95 @@
 package com.vulnwatch.worker.publisher;
 
-import java.time.Instant;
-import java.util.Map;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vulnwatch.worker.enums.ScanStatus;
+import com.vulnwatch.worker.model.DomainIntel;
+import com.vulnwatch.worker.model.ScanJob;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vulnwatch.worker.model.DomainIntel;
-import com.vulnwatch.worker.model.ScanJob;
+import java.time.Instant;
 
+/**
+ * Publishes domain intelligence results and processing status events to Redis queues.
+ */
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class DomainIntelPublisher {
-    
-    private static final Logger log = LoggerFactory.getLogger(DomainIntelPublisher.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final String resultQueue;
     private final ObjectMapper mapper;
 
-    public DomainIntelPublisher(
-            RedisTemplate<String, Object> redisTemplate,
-            @Value("${worker.domain.result.queue:scan-results}") String resultQueue) {
-        this.redisTemplate = redisTemplate;
-        this.resultQueue = resultQueue;
-        this.mapper = new ObjectMapper();
-    }
+    @Value("${worker.domain.result.queue:scan-results}")
+    private String resultQueue;
+
+    /**
+     * Strongly typed payload matching the consumer contract on the C# service.
+     */
+    private record ScanResultPayload(
+            String scanId,
+            String domainId,
+            String domainName,
+            String requestedBy,
+            String status,
+            int securityScore,
+            String aiAvailability,
+            String completedAt,
+            String error
+    ) {}
 
     public void publishSuccess(ScanJob job, DomainIntel result) {
-        publish(Map.of(
-                "scanId",          job.scanId(),
-                "domainId",        job.domainId(),
-                "domainName",      job.domainName(),
-                "requestedBy",     job.requestedBy(),
-                "status",          "COMPLETED",
-                "securityScore", result.securityScore(),
-                "completedAt",     Instant.now().toString(),
-                "error",           ""
-        ));
+        ScanResultPayload payload = buildPayload(
+                job,
+                ScanStatus.COMPLETED.getDisplayName(),
+                result.securityScore(),
+                result.aiAvailability().name(),
+                ""
+        );
+        publish(payload);
     }
 
     public void publishFailure(ScanJob job, String errorMessage) {
-        publish(Map.of(
-                "scanId",          job.scanId(),
-                "domainId",        job.domainId(),
-                "domainName",      job.domainName(),
-                "requestedBy",     job.requestedBy(),
-                "status",          "FAILED",
-                "securityScore",   "NONE",
-                "completedAt",     Instant.now().toString(),
-                "error",           errorMessage != null ? errorMessage : "Unknown error"
-        ));
+        String safeError = errorMessage != null ? errorMessage : "Unknown error";
+        ScanResultPayload payload = buildPayload(
+                job,
+                ScanStatus.FAILED.getDisplayName(),
+                0,
+                "UNKNOWN",
+                safeError
+        );
+        publish(payload);
     }
 
+    private ScanResultPayload buildPayload(ScanJob job, String status, int score, String aiAvailability, String error) {
+        return new ScanResultPayload(
+                job.scanId(),
+                job.domainId(),
+                job.domainName(),
+                job.requestedBy(),
+                status,
+                score,
+                aiAvailability,
+                Instant.now().toString(),
+                error
+        );
+    }
 
-    private void publish(Map<String, Object> event) {
+    private void publish(ScanResultPayload payload) {
         try {
-            String json = mapper.writeValueAsString(event);
-            redisTemplate.opsForList().rightPush(resultQueue, json);
-            log.debug("Published event to {}: scanId={}", resultQueue, event.get("scanId"));
+            String json = mapper.writeValueAsString(payload);
+            redisTemplate
+                    .opsForList()
+                    .rightPush(resultQueue, json);
+            log.debug("Successfully published result event [queue={} scanId={}]", resultQueue, payload.scanId());
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize scan result payload for scanId '{}': {}", payload.scanId(), e.getMessage(), e);
         } catch (Exception e) {
-            log.error("Failed to publish notification event: {}", e.getMessage(), e);
+            log.error("Failed to push scan result to Redis queue [{}]: {}", resultQueue, e.getMessage(), e);
         }
     }
 }

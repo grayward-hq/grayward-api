@@ -51,7 +51,7 @@ public class ScannerRetryPolicy {
      * @throws ScannerExecutionException always — signals to @Recover that all retries failed
      */
     @Retryable(
-            retryFor  = ScannerExecutionException.class,
+            retryFor  = Exception.class,
             maxAttempts = 3,
             backoff   = @Backoff(delay = 2000, multiplier = 2)
     )
@@ -60,15 +60,29 @@ public class ScannerRetryPolicy {
 
         log.debug("Scanner executing [scanId={} surface={}]", job.scanId(), surface.name());
 
-        EngineResult result = scanner.scan(job);
+        EngineResult result;
+        try {
+            result = scanner.scan(job);
+        } catch (Exception rawException) {
+            // Protects against raw unhandled connection/socket timeout exceptions
+            log.warn("Scanner threw raw unexpected exception [scanId={} surface={} message={}]",
+                    job.scanId(), surface.name(), rawException.getMessage());
+
+            int retryCount = surfaceStateManager.incrementRetryCount(job.scanId(), surface);
+            surfaceStateManager.transition(job.scanId(), surface, SurfaceStatus.RETRYING);
+
+            throw new ScannerExecutionException(
+                    surface,
+                    rawException.getMessage(),
+                    retryCount,
+                    FailureReason.SCANNER_ERROR
+            );
+        }
 
         if (!result.success()) {
-            // Engine returned a failure result (not an exception).
-            // We treat this the same as an exception so Spring Retry picks it up.
             log.warn("Scanner returned failure [scanId={} surface={} reason={}]",
                     job.scanId(), surface.name(), result.errorMessage());
 
-            // Increment retry count and transition to RETRYING in Redis
             int retryCount = surfaceStateManager.incrementRetryCount(job.scanId(), surface);
             surfaceStateManager.transition(job.scanId(), surface, SurfaceStatus.RETRYING);
 
@@ -84,40 +98,41 @@ public class ScannerRetryPolicy {
     }
 
     /**
-     * Called by Spring Retry after all 3 attempts are exhausted.
-     *
-     * Transitions the surface to PERMANENTLY_FAILED in Redis and
-     * fires ScannerExhaustedEvent for the DeadLetterQueueHandler.
-     *
-     * Returns null — ScanOrchestrator checks for null and skips AI enrichment
-     * for this surface, allowing the other surfaces to continue unaffected.
+     * Recovery method now accepts a generic Exception parameter to cleanly map
+     * both handled business faults and raw nested execution bubble-ups.
      */
     @Recover
-    public EngineResult recover(ScannerExecutionException e, Scanner scanner, ScanJob job) {
+    public EngineResult recover(Exception e, Scanner scanner, ScanJob job) {
         SurfaceType surface = scanner.surfaceType();
 
-        log.error("Scanner exhausted all retries [scanId={} surface={} retryCount={} reason={}]",
-                job.scanId(), surface.name(), e.getRetryCount(), e.getFailureReason());
+        int totalRetries = 3;
+        FailureReason reason = FailureReason.SCANNER_ERROR;
+        String message = e.getMessage();
 
-        // Final state transition
+        // Extract detailed stats if it's our specialized wrapper exception
+        if (e instanceof ScannerExecutionException see) {
+            totalRetries = see.getRetryCount();
+            reason = see.getFailureReason();
+        }
+
+        log.error("Scanner exhausted all retries permanently [scanId={} surface={} attempts={} reason={}]",
+                job.scanId(), surface.name(), totalRetries, message);
+
         surfaceStateManager.transitionFailed(
                 job.scanId(),
                 surface,
                 SurfaceStatus.PERMANENTLY_FAILED,
-                e.getFailureReason()
+                reason
         );
 
-        // Publish event DeadLetterQueueHandler picks this up
         eventPublisher.publishEvent(new ScannerExhaustedEvent(
                 job,
                 surface,
-                e.getRetryCount(),
-                e.getFailureReason(),
-                e.getMessage()
+                totalRetries,
+                reason,
+                message
         ));
 
-        // Return null — ScanOrchestrator handles null gracefully,
-        // skips AI enrichment for this surface, continues with others
         return null;
     }
 
