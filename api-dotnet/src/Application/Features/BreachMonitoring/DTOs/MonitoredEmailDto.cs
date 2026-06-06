@@ -1,6 +1,8 @@
+using Domain.Common;
 using Domain.Entities;
 
 namespace Application.Features.BreachMonitoring.DTOs;
+
 public record MonitoredEmailDto(
     Guid Id,
     string EmailAddress,
@@ -19,3 +21,11 @@ public record MonitoredEmailDto(
         e.LatestDetectionAt,
         e.CreatedAt);
 }
+
+public record MonitoredEmailSummary(int Total, int Breached, int NotBreached);
+
+public record MonitoredEmailsPagedDto(
+    int TotalEmails,
+    int BreachedCount,
+    int NotBreachedCount,
+    PagedResult<MonitoredEmailDto> Emails);
