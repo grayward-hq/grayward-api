@@ -4,6 +4,7 @@ import com.vulnwatch.worker.CliExecutor;
 import com.vulnwatch.worker.engine.domain.testssl.SslEngine;
 import com.vulnwatch.worker.engine.domain.testssl.models.SslFindings;
 import com.vulnwatch.worker.engine.parsers.TestsslParser;
+import com.vulnwatch.worker.enums.FindingSeverity;
 import com.vulnwatch.worker.enums.SurfaceType;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
@@ -60,7 +61,7 @@ public class TestsslTest {
     @Test
     void scan_returnsEngineResult_success() throws Throwable{
         List<SslFindings> mockedFindings = List.of(
-                new SslFindings("id", "ip", "port", "finding", "severity" )
+                new SslFindings("id", "ip", "port", "finding", FindingSeverity.NONE )
         );
         when(parser.parse(any(File.class)))
                 .thenReturn(mockedFindings);
