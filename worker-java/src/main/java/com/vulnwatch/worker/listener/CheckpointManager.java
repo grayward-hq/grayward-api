@@ -64,7 +64,7 @@ public class CheckpointManager {
     @Value("${worker.checkpoint.ttl-seconds:7200}")
     private long ttlSeconds;
 
-    private QueueNames queueNames;
+    private final QueueNames queueNames;
     private String queueName;
 
     @PostConstruct

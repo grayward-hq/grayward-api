@@ -32,7 +32,7 @@ public class QueueListener implements Runnable {
     @Value("${worker.blpop.timeout:5}")
     private int blpopTimeout;
 
-    private QueueNames queueNames;
+    private final QueueNames queueNames;
     private String queueName;
 
     private final JedisPooled jedis;
