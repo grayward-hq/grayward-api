@@ -1,8 +1,10 @@
 package com.vulnwatch.worker.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vulnwatch.worker.config.QueueNames;
 import com.vulnwatch.worker.model.ScanJob;
 import com.vulnwatch.worker.processor.JobProcessor;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.JedisPooled;
@@ -30,7 +32,7 @@ public class QueueListener implements Runnable {
     @Value("${worker.blpop.timeout:5}")
     private int blpopTimeout;
 
-    @Value("${worker.scanjob.queue:scan-jobs}")
+    private final QueueNames queueNames;
     private String queueName;
 
     private final JedisPooled jedis;
@@ -40,6 +42,11 @@ public class QueueListener implements Runnable {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     private volatile boolean running = true;
+
+    @PostConstruct
+    void init() {
+        this.queueName = queueNames.scanJobs();
+    }
 
 
     @Override

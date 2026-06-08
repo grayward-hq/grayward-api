@@ -29,31 +29,49 @@ public class DomainPersistence {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
-    // SQL Statements
+
+
     private static final String INSERT_FINDING = """
-            INSERT INTO "Findings"
-            (
+            INSERT INTO "Findings" (
                 "Id", "ScanId", "Surface", "Severity", "Title",
                 "CveId", "AiExplanation", "TechnicalPayload",
                 "RemediationSteps", "Status", "CreatedAt"
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?)
             """;
 
-    private static final String UPDATE_SCAN = """
+    private static final String UPDATE_SCAN_MARK_RUNNING = """
             UPDATE "Scans"
-            SET "Status" = 'Completed', "SecurityScore" = ?,
-                "CompletedAt" = ?, "UpdatedAt" = ?
+            SET "Status" = 'Running',
+                "StartedAt" = ?,
+                "UpdatedAt" = ?
+            WHERE "Id" = ?
+            """;
+
+    private static final String UPDATE_SCAN_COMPLETE = """
+            UPDATE "Scans"
+            SET "Status" = 'Completed',
+                "SecurityScore" = ?,
+                "CompletedAt" = ?,
+                "UpdatedAt" = ?
+            WHERE "Id" = ?
+            """;
+
+    private static final String UPDATE_SCAN_FAIL = """
+            UPDATE "Scans"
+            SET "Status" = 'Failed',
+                "CompletedAt" = ?,
+                "UpdatedAt" = ?
             WHERE "Id" = ?
             """;
 
     private static final String UPDATE_DOMAIN_SSL_EXPIRY = """
             UPDATE "Domains"
-            SET "SslCertExpiry" = ?, "UpdatedAt" = ?
+            SET "SslCertExpiry" = ?,
+                "UpdatedAt" = ?
             WHERE "Id" = ?
             """;
 
-    // Fallbacks and Default String Constants
+    // Fallback constants
     private static final String DEFAULT_SEVERITY = "Low";
     private static final String FALLBACK_EXPLANATION = "Engine ran but enrichment failed.";
     private static final String FALLBACK_REMEDIATION = "Review engine output manually.";
@@ -66,9 +84,16 @@ public class DomainPersistence {
                 .build();
     }
 
-    /**
-     * Orchestrates the persistence workflow for a completed scan evaluation.
-     */
+
+    public void markRunning(String scanId) {
+        OffsetDateTime now = now();
+        int updated = jdbc.update(UPDATE_SCAN_MARK_RUNNING, now, now, uuid(scanId));
+
+        if (updated == 0) {
+            log.warn("markRunning: no Scan row found [scanId={}]", scanId);
+        }
+    }
+
     public List<DomainFinding> saveFindings(
             String scanId,
             String domainId,
@@ -80,17 +105,26 @@ public class DomainPersistence {
 
         try {
             insertFindings(findings);
-            updateScan(scanId, securityScore);
+            updateScanComplete(scanId, securityScore);
             extractSslCertExpiry(engineResults, enrichments)
                     .ifPresent(expiry -> updateDomainSslExpiry(domainId, expiry));
 
             log.info("Saved {} findings [scanId={}]", findings.size(), scanId);
         } catch (Exception e) {
             log.error("Failed to save findings [scanId={}]", scanId, e);
-            throw new RuntimeException("Persistence failure", e);
+            throw new RuntimeException("Persistence failure for scan %s".formatted(scanId), e);
         }
 
         return findings;
+    }
+
+    public void markFailed(String scanId) {
+        OffsetDateTime now = now();
+        int updated = jdbc.update(UPDATE_SCAN_FAIL, now, now, uuid(scanId));
+
+        if (updated == 0) {
+            log.warn("markFailed: no Scan row found [scanId={}]", scanId);
+        }
     }
 
 
@@ -99,7 +133,7 @@ public class DomainPersistence {
             List<EngineResult> engineResults,
             List<AiResult> enrichments) {
 
-        List<DomainFinding> findings = new ArrayList<>();
+        List<DomainFinding> findings = new ArrayList<>(engineResults.size());
 
         for (int i = 0; i < engineResults.size(); i++) {
             EngineResult engine = engineResults.get(i);
@@ -108,23 +142,22 @@ public class DomainPersistence {
             findings.add(new DomainFinding(
                     UUID.randomUUID().toString(),
                     scanId,
-                    engine.surfaceType().getLabel(),
-                    severity(enrichment),
-                    buildTitle(engine, enrichment), // passing enrichment context
+                    surfaceLabel(engine.surfaceType()),
+                    normaliseSeverity(enrichment),
+                    buildTitle(engine, enrichment),
                     cveId(enrichment),
                     explanation(enrichment),
                     formatPayload(engine),
                     remediation(enrichment)
             ));
         }
-
         return findings;
     }
 
     private void insertFindings(List<DomainFinding> findings) {
         jdbc.batchUpdate(INSERT_FINDING, findings, findings.size(), (ps, f) -> {
-            ps.setObject(1, UUID.fromString(f.id()));   // ← was UUID.randomUUID()
-            ps.setObject(2, UUID.fromString(f.scanId()));
+            ps.setObject(1, uuid(f.id()));
+            ps.setObject(2, uuid(f.scanId()));
             ps.setString(3, f.surface());
             ps.setString(4, f.severity());
             ps.setString(5, f.title());
@@ -136,11 +169,12 @@ public class DomainPersistence {
         });
     }
 
-    private void updateScan(String scanId, int securityScore) {
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        int updated = jdbc.update(UPDATE_SCAN, securityScore, now, now, UUID.fromString(scanId));
+    private void updateScanComplete(String scanId, int securityScore) {
+        OffsetDateTime now = now();
+        int updated = jdbc.update(UPDATE_SCAN_COMPLETE, securityScore, now, now, uuid(scanId));
+
         if (updated == 0) {
-            throw new IllegalStateException("No scan row updated for scanId=%s".formatted(scanId));
+            throw new IllegalStateException("No Scan row updated [scanId=%s]".formatted(scanId));
         }
     }
 
@@ -166,12 +200,12 @@ public class DomainPersistence {
             int updated = jdbc.update(
                     UPDATE_DOMAIN_SSL_EXPIRY,
                     expiry,
-                    OffsetDateTime.now(ZoneOffset.UTC),
-                    UUID.fromString(domainId)
+                    now(),
+                    uuid(domainId)
             );
 
             if (updated == 0) {
-                log.warn("No domain row updated [domainId={}]", domainId);
+                log.warn("No Domain row updated [domainId={}]", domainId);
             } else {
                 log.debug("Updated SslCertExpiry [domainId={} expiry={}]", domainId, certExpiry);
             }
@@ -181,12 +215,29 @@ public class DomainPersistence {
     }
 
 
-    private String severity(AiResult enrichment) {
-        return enrichment != null ? enrichment.severity() : DEFAULT_SEVERITY;
+    private String surfaceLabel(SurfaceType surfaceType) {
+        return surfaceType.getLabel();
+    }
+
+    private String normaliseSeverity(AiResult enrichment) {
+        if (enrichment == null || enrichment.severity() == null) {
+            return DEFAULT_SEVERITY;
+        }
+
+        String s = enrichment.severity().trim().toLowerCase();
+        return switch (s) {
+            case "critical" -> "Critical";
+            case "high" -> "High";
+            case "medium" -> "Medium";
+            case "low" -> "Low";
+            default -> DEFAULT_SEVERITY;
+        };
     }
 
     private String explanation(AiResult enrichment) {
-        return enrichment != null ? enrichment.explanation() : FALLBACK_EXPLANATION;
+        return enrichment != null && enrichment.explanation() != null
+                ? enrichment.explanation()
+                : FALLBACK_EXPLANATION;
     }
 
     private String cveId(AiResult enrichment) {
@@ -194,13 +245,14 @@ public class DomainPersistence {
     }
 
     private String remediation(AiResult enrichment) {
-        if (enrichment == null || enrichment.remediationSteps() == null || enrichment.remediationSteps().isEmpty()) {
+        if (enrichment == null
+                || enrichment.remediationSteps() == null
+                || enrichment.remediationSteps().isEmpty()) {
             return FALLBACK_REMEDIATION;
         }
         return String.join("\n", enrichment.remediationSteps());
     }
 
-    // New contextual title determination logic
     private String buildTitle(EngineResult engine, AiResult enrichment) {
         if (!engine.success()) {
             return "%s probe failed".formatted(engine.surfaceType().getLabel());
@@ -222,5 +274,14 @@ public class DomainPersistence {
             log.warn("Failed to serialize payload [surface={}]", engine.surfaceType(), e);
             return EMPTY_JSON;
         }
+    }
+
+
+    private OffsetDateTime now() {
+        return OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    private UUID uuid(String id) {
+        return UUID.fromString(id);
     }
 }

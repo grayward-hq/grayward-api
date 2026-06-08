@@ -2,10 +2,11 @@ package com.vulnwatch.worker.listener;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vulnwatch.worker.config.QueueNames;
 import com.vulnwatch.worker.enums.ScanStatus;
 import com.vulnwatch.worker.model.ScanJob;
-import com.vulnwatch.worker.state.RedisSurfaceStateManager;
 import com.vulnwatch.worker.state.ScanJobStateMachine;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +14,6 @@ import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
-
 import java.net.InetAddress;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -58,11 +58,17 @@ public class CheckpointManager {
     private final ObjectMapper mapper;
     private final ScanJobStateMachine stateMachine;
 
+
     @Value("${worker.checkpoint.ttl-seconds:7200}")
     private long ttlSeconds;
 
-    @Value("${worker.scanjob.queue:scan-jobs}")
+    private final QueueNames queueNames;
     private String queueName;
+
+    @PostConstruct
+    void init() {
+        this.queueName = queueNames.scanJobs();
+    }
 
     /**
      * Writes a checkpoint for the given job BEFORE processing begins.
