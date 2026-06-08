@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.config.QueueNames;
 import com.vulnwatch.worker.enums.ScanStatus;
 import com.vulnwatch.worker.model.ScanJob;
-import com.vulnwatch.worker.state.RedisSurfaceStateManager;
 import com.vulnwatch.worker.state.ScanJobStateMachine;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,8 +14,6 @@ import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
-
-import javax.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.time.Instant;
 import java.util.ArrayList;
