@@ -132,7 +132,7 @@ CREATE INDEX IF NOT EXISTS "IX_Findings_ScanId" ON "Findings"("ScanId");
 -- PascalCase column names match the Java SQL exactly.
 -- The ON CONFLICT clause in Java targets ("ScanId", "FindingId").
 -- =============================================================================
-CREATE TABLE IF NOT EXISTS "OwaspMapping" (
+CREATE TABLE IF NOT EXISTS "OwaspMappings" (
                                               "Id"            UUID        NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
     "ScanId"        UUID        NOT NULL REFERENCES "Scans"("Id") ON DELETE CASCADE,
     "FindingId"     UUID        NOT NULL REFERENCES "Findings"("Id") ON DELETE CASCADE,

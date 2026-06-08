@@ -1,21 +1,27 @@
 package com.vulnwatch.worker.config;
 
-import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 
+/**
+ * AI provider configuration.
+ *
+ * Only ONE provider dependency should be active in pom.xml at a time.
+ * Switching providers requires two steps:
+ *   1. Swap the commented dependency in pom.xml  (openai / anthropic / google-genai)
+ *   2. Update AI_PROVIDER in .env (openai / groq / anthropic / gemini)
+
+ */
 @Configuration
 public class AiConfig {
 
-    // Groq configuration injection variables
     @Value("${groq.api-key:}")
     private String groqApiKey;
 
@@ -25,71 +31,42 @@ public class AiConfig {
     @Value("${groq.model:llama-3.3-70b-versatile}")
     private String groqModel;
 
-
+    /**
+     * Groq — manually wired because it reuses the OpenAI-compatible API
+     * pointed at a different base URL with a different key.
+     *
+     * Requires: spring-ai-starter-model-openai in pom.xml
+     * Activate: AI_PROVIDER=groq in .env
+     */
     @Bean
-    @Primary
     @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "groq")
     public ChatClient groqChatClient() {
         OpenAiApi groqApi = OpenAiApi.builder()
-                .baseUrl(this.groqBaseUrl)
-                .apiKey(this.groqApiKey)
+                .baseUrl(groqBaseUrl)
+                .apiKey(groqApiKey)
                 .build();
 
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(this.groqModel)
-                .build();
-
-        OpenAiChatModel dedicatedGroqModel = OpenAiChatModel.builder()
+        OpenAiChatModel model = OpenAiChatModel.builder()
                 .openAiApi(groqApi)
-                .defaultOptions(options)
+                .defaultOptions(OpenAiChatOptions.builder()
+                        .model(this.groqModel)
+                        .build())
                 .build();
 
-        return ChatClient.builder(dedicatedGroqModel).build();
+        return ChatClient.builder(model).build();
     }
 
     /**
-     * Native OpenAI Client — Active when worker.ai.provider=openai
+     * Default — covers OpenAI, Anthropic, and Gemini.
+     *
+     * Spring AI's starter auto-configures a ChatClient.Builder for whichever
+     * provider is on the classpath. This bean just calls builder.build().
+     * No provider-specific imports are needed — switching providers only requires
+     * changing the pom.xml dependency and AI_PROVIDER in .env.
      */
     @Bean
-    @Primary
-    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "openai")
-    public ChatClient openAiChatClient(OpenAiChatModel openAiChatModel) {
-        return ChatClient.builder(openAiChatModel).build();
-    }
-
-    /**
-     * Anthropic Claude — Active when worker.ai.provider=anthropic
-     */
-    @Bean
-    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "anthropic")
-    public ChatClient anthropicChatClient(AnthropicChatModel anthropicChatModel) {
-        return ChatClient.builder(anthropicChatModel).build();
-    }
-
-    /**
-     * Anthropic Claude (alias) — Active when worker.ai.provider=claude
-     */
-    @Bean
-    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "claude")
-    public ChatClient claudeChatClient(AnthropicChatModel anthropicChatModel) {
-        return ChatClient.builder(anthropicChatModel).build();
-    }
-
-    /**
-     * Google Gemini — Active when worker.ai.provider=google
-     */
-    @Bean
-    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "google")
-    public ChatClient googleChatClient(GoogleGenAiChatModel googleGenAiChatModel) {
-        return ChatClient.builder(googleGenAiChatModel).build();
-    }
-
-    /**
-     * Google Gemini (alias) — Active when worker.ai.provider=gemini
-     */
-    @Bean
-    @ConditionalOnProperty(name = "worker.ai.provider", havingValue = "gemini")
-    public ChatClient geminiChatClient(GoogleGenAiChatModel googleGenAiChatModel) {
-        return ChatClient.builder(googleGenAiChatModel).build();
+    @ConditionalOnMissingBean(ChatClient.class)
+    public ChatClient defaultChatClient(ChatClient.Builder builder) {
+        return builder.build();
     }
 }

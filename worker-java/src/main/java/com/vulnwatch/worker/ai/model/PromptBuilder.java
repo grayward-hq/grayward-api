@@ -13,6 +13,10 @@ import java.util.stream.Collectors;
 @Component
 public class PromptBuilder {
 
+    // Max characters of raw engine output to include in the prompt.
+    // 466k tokens was hitting gpt-4o-mini's 200k TPM limit.
+    // At ~4 chars/token, 6000 chars ≈ 1500 tokens — well within any model's limits.
+    private static final int MAX_RAW_CHARS = 6_000;
 
     public String domainSystemPrompt() {
         return """
@@ -32,6 +36,10 @@ public class PromptBuilder {
     }
 
     public String domainEnrichPrompt(ScanJob job, EngineResult result) {
+        String findings = result.success()
+                ? truncate(String.valueOf(result.rawResult()), MAX_RAW_CHARS)
+                : "Engine failed: %s".formatted(result.errorMessage());
+
         return """
             Domain: %s
             Scan ID: %s
@@ -55,10 +63,8 @@ public class PromptBuilder {
                 job.scanId(),
                 result.surfaceType().getLabel(),
                 result.success(),
-                result.success() ? result.rawResult() : "Engine failed: %s".formatted(result.errorMessage()));
+                findings);
     }
-
-
 
     public String repositorySystemPrompt() {
         return """
@@ -69,14 +75,15 @@ public class PromptBuilder {
     }
 
     public String repositoryEnrichPrompt(List<String> dependencies) {
+        // Truncate the dependency list too — trivy output can also be very large
+        String depList = truncate(String.join("\n", dependencies), MAX_RAW_CHARS);
         return """
                 Analyse the following dependencies for known vulnerabilities.
 
                 Dependencies:
                 %s
-                """.formatted(String.join("\n", dependencies));
+                """.formatted(depList);
     }
-
 
     public String owaspPostureSystemPrompt() {
         return """
@@ -110,5 +117,18 @@ public class PromptBuilder {
         3. Estimates the score improvement if those categories were remediated.
         4. Ends with a concrete prioritised action.
         """.formatted(result.overallScore(), result.tier().getLabel(), categoryLines);
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    /**
+     * Truncates the raw engine output to avoid exceeding model token limits.
+     * Appends a note so the model knows the output was cut.
+     */
+    private static String truncate(String text, int maxChars) {
+        if (text == null) return "";
+        if (text.length() <= maxChars) return text;
+        log.debug("Truncating engine output from {} to {} chars", text.length(), maxChars);
+        return text.substring(0, maxChars) + "\n... [truncated for brevity]";
     }
 }

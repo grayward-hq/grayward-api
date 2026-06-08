@@ -2,6 +2,8 @@ package com.vulnwatch.worker.publisher;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vulnwatch.worker.config.QueueNames;
+import com.vulnwatch.worker.enums.AiAvailability;
 import com.vulnwatch.worker.enums.ScanStatus;
 import com.vulnwatch.worker.model.DomainIntel;
 import com.vulnwatch.worker.model.ScanJob;
@@ -23,9 +25,8 @@ public class DomainIntelPublisher {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper mapper;
+    private final QueueNames queueNames;
 
-    @Value("${worker.domain.result.queue:scan-results}")
-    private String resultQueue;
 
     /**
      * Strongly typed payload matching the consumer contract on the C# service.
@@ -59,7 +60,7 @@ public class DomainIntelPublisher {
                 job,
                 ScanStatus.FAILED.getDisplayName(),
                 0,
-                "UNKNOWN",
+                AiAvailability.UNAVAILABLE.name(),
                 safeError
         );
         publish(payload);
@@ -80,6 +81,8 @@ public class DomainIntelPublisher {
     }
 
     private void publish(ScanResultPayload payload) {
+
+        String resultQueue = queueNames.domainIntel();
         try {
             String json = mapper.writeValueAsString(payload);
             redisTemplate
