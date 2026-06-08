@@ -3,6 +3,7 @@ package com.vulnwatch.worker.publisher;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.config.QueueNames;
+import com.vulnwatch.worker.enums.AiAvailability;
 import com.vulnwatch.worker.enums.ScanStatus;
 import com.vulnwatch.worker.model.DomainIntel;
 import com.vulnwatch.worker.model.ScanJob;
@@ -59,7 +60,7 @@ public class DomainIntelPublisher {
                 job,
                 ScanStatus.FAILED.getDisplayName(),
                 0,
-                "UNKNOWN",
+                AiAvailability.UNAVAILABLE.name(),
                 safeError
         );
         publish(payload);
