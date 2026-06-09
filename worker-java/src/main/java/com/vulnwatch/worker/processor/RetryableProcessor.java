@@ -1,73 +1,69 @@
 package com.vulnwatch.worker.processor;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.model.ScanJob;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import redis.clients.jedis.JedisPooled;
 
+import java.time.Instant;
+import java.util.Map;
+
 /**
- * Decorates a {@link JobProcessor} with exponential-backoff retry logic.
- * After {@value MAX_ATTEMPTS} failed attempts the job is pushed to a
- * dead-letter queue (DLQ) in Redis for manual inspection.
+ * Decorates a {@link JobProcessor} with declarative exponential backoff.
+ * If execution completely fails after 3 attempts, the job metadata is routed into a Redis DLQ.
  */
 @Slf4j
+@RequiredArgsConstructor
 public class RetryableProcessor implements JobProcessor {
-
-    private static final int  MAX_ATTEMPTS  = 3;
-    private static final long BASE_DELAY_MS = 2_000L;
 
     private final JobProcessor delegate;
     private final JedisPooled jedis;
     private final String dlqKey;
     private final ObjectMapper mapper;
 
-    public RetryableProcessor(JobProcessor delegate, JedisPooled jedis, String dlqKey, ObjectMapper mapper) {
-        this.delegate = delegate;
-        this.jedis = jedis;
-        this.dlqKey = dlqKey;
-        this.mapper = mapper;
-    }
-
     @Override
+    @Retryable(
+            retryFor = Exception.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 2000, multiplier = 2.0)
+    )
     public void process(ScanJob job) {
-        Exception lastException = null;
-
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            try {
-                if (attempt > 1) backoff(job, attempt);
-                delegate.process(job);
-                return;
-
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                log.warn("Retry interrupted [scanId={}], aborting", job.scanId());
-                return;
-
-            } catch (Exception e) {
-                lastException = e;
-                log.warn("Attempt {}/{} failed [scanId={}]: {}",
-                        attempt, MAX_ATTEMPTS, job.scanId(), e.getMessage());
-            }
-        }
-
-        pushToDlq(job, lastException);
+        log.info("Processing job via execution pipeline [scanId={} type={}]", job.scanId(), job.scanType());
+        delegate.process(job);
     }
 
-    private void backoff(ScanJob job, int attempt) throws InterruptedException {
-        long delay = BASE_DELAY_MS * (long) Math.pow(2, attempt - 2);
-        log.info("Retrying [scanId={} attempt={}/{} delayMs={}]",
-                job.scanId(), attempt, MAX_ATTEMPTS, delay);
-        Thread.sleep(delay);
-    }
+    /**
+     * Fallback method triggered automatically when all retry attempts are exhausted.
+     * Note: The first argument MUST be the exception thrown, followed by the original method arguments.
+     */
+    @Recover
+    public void recover(Exception cause, ScanJob job) {
+        String reason = cause != null ? cause.getMessage() : "Unknown operational failure";
+        log.error("Job processor completely exhausted all retry attempts [scanId={} reason={}]", job.scanId(), reason);
 
-    private void pushToDlq(ScanJob job, Exception cause) {
         try {
-            String payload = mapper.writeValueAsString(job);
+            // Enrich the dead letter payload so operators have immediate debugging triage context
+            Map<String, Object> dlqWrapper = Map.of(
+                    "failedAt", Instant.now().toString(),
+                    "failureReason", reason,
+                    "attemptsExhausted", 3,
+                    "job", job
+            );
+
+            String payload = mapper.writeValueAsString(dlqWrapper);
             jedis.lpush(dlqKey, payload);
-            log.error("Job sent to DLQ after {} failed attempts [scanId={} reason={}]",
-                    MAX_ATTEMPTS, job.scanId(), cause != null ? cause.getMessage() : "unknown");
+
+            log.info("Successfully dropped job tracking payload to global DLQ [scanId={} queue={}]", job.scanId(), dlqKey);
+
+        } catch (JsonProcessingException e) {
+            log.error("CRITICAL: Failed to serialize fallback job payload for DLQ [scanId={}]: {}", job.scanId(), e.getMessage(), e);
         } catch (Exception e) {
-            log.error("Failed to push job to DLQ [scanId={} dlq={}]", job.scanId(), dlqKey, e);
+            log.error("CRITICAL: Failed to push message transport wrapper to Redis DLQ [scanId={} queue={}]: {}", job.scanId(), dlqKey, e.getMessage(), e);
         }
     }
 }

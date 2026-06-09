@@ -2,7 +2,11 @@ package com.vulnwatch.worker.listener;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vulnwatch.worker.config.QueueNames;
+import com.vulnwatch.worker.enums.ScanStatus;
 import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.state.ScanJobStateMachine;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,7 +14,6 @@ import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
-
 import java.net.InetAddress;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -53,12 +56,19 @@ public class CheckpointManager {
 
     private final JedisPooled jedis;
     private final ObjectMapper mapper;
+    private final ScanJobStateMachine stateMachine;
+
 
     @Value("${worker.checkpoint.ttl-seconds:7200}")
     private long ttlSeconds;
 
-    @Value("${worker.scanjob.queue:scan-jobs}")
+    private final QueueNames queueNames;
     private String queueName;
+
+    @PostConstruct
+    void init() {
+        this.queueName = queueNames.scanJobs();
+    }
 
     /**
      * Writes a checkpoint for the given job BEFORE processing begins.
@@ -175,6 +185,16 @@ public class CheckpointManager {
             return 0;
         }
 
+        // Guard: don't re-queue if this scan already reached a terminal state
+        ScanStatus currentState = stateMachine.getState(job.scanId());
+        if (currentState != null && currentState.isTerminal()) {
+            log.warn("Checkpoint found for already-terminal scan — clearing without re-queue [scanId={} state={}]",
+                    job.scanId(), currentState);
+            jedis.del(key); // clear the dangling checkpoint safely
+            return 0;
+        }
+
+        // Proceed to re-queue if the job is still active/stale
         jedis.lpush(queueName, rawPayload);
         jedis.del(key); // Remove checkpoint — QueueListener will re-mark it on pickup
 

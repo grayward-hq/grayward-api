@@ -21,7 +21,13 @@ public enum SurfaceType {
     DEPENDENCY("Dependency"),
 
     @Schema(description = "Hardcoded secrets and credentials")
-    SECRETS("Secrets");
+    SECRETS("Secrets"),
+
+    @Schema(description = "Subdomain discovery")
+    SUBDOMAINS("Subdomains"),
+
+    @Schema(description = "Ports discovery")
+    PORTS("Ports");
 
     private final String label;
 
