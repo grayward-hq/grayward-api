@@ -44,7 +44,7 @@ public class NmapEngine implements Scanner {
     @Override
     public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
-        String outputFileName = "%s/%s-%s.json".formatted(tempLocation,binary,job.scanId());
+        String outputFileName = "%s/nmap-%s.json".formatted(tempLocation,job.scanId());
         Path outFile = Path.of(outputFileName);
 
         List<String> command = List.of(
