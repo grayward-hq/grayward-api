@@ -41,7 +41,7 @@ public class TrivyEngine implements Scanner {
     @Override
     public EngineResult scan(ScanJob job){
         String repoId = job.repoId();
-        String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
+        String outputFileName = "%s/trivy-%s.jsonl".formatted(tempLocation,job.scanId());
         Path outFile = Path.of(outputFileName);
 
         String repoUrl = repoId.startsWith("https")
