@@ -7,7 +7,7 @@ namespace Application.Features.Alerts.BrandProtection;
 
 public static class BrandThreatAlertFactory
 {
-    public static Alert Create(BrandThreatDetectedEvent e, AlertChannel channel)
+    public static Alert Create(BrandThreatDetectedEvent e, AlertChannel channel, string appBaseUrl)
     {
         var severity = e.Threat.RiskLevel switch
         {
@@ -23,8 +23,9 @@ public static class BrandThreatAlertFactory
             severity: severity,
             deduplicationKey: $"brand-threat-{e.Threat.Id}",
             subject: BuildSubject(e),
-            body: BuildBody(e),
-            domainId: e.Domain.Id);
+            body: BuildBody(e, appBaseUrl),
+            domainId: e.Domain.Id,
+            summary: BuildSummary(e, appBaseUrl));
     }
 
     private static string BuildSubject(BrandThreatDetectedEvent e) =>
@@ -38,7 +39,7 @@ public static class BrandThreatAlertFactory
                 $"{e.Domain.DomainName} — lookalike domain registered: {e.Threat.LookAlikeDomain}"
         };
 
-    private static string BuildBody(BrandThreatDetectedEvent e)
+    private static string BuildBody(BrandThreatDetectedEvent e, string appBaseUrl)
     {
         var threat = e.Threat;
 
@@ -106,6 +107,9 @@ public static class BrandThreatAlertFactory
               </table>
               """
             : "";
+
+        var ctaUrl = $"{appBaseUrl}/trust-compliance?domainId={e.Domain.Id}";
+        
 
         return AlertEmailTemplates.Wrap(
             title: "Brand Threat Detected",
@@ -210,7 +214,7 @@ public static class BrandThreatAlertFactory
                 <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
                   <tr>
                     <td style="background-color:#0f172a;border-radius:6px;">
-                      <a href="https://app.vulnwatch.io/domains/{e.Domain.Id}/brand-threats"
+                      <a href="{ctaUrl}"
                          style="display:inline-block;padding:12px 28px;font-size:14px;
                                 font-weight:600;color:#ffffff;text-decoration:none;">
                         View Brand Threats →
@@ -226,4 +230,19 @@ public static class BrandThreatAlertFactory
                 </p>
                 """);
     }
+
+  private static string BuildSummary(BrandThreatDetectedEvent e, string appBaseUrl)
+  {
+      var ctaUrl = $"{appBaseUrl}/trust-compliance?domainId={e.Domain.Id}";
+      var threat = e.Threat;
+
+      var dns  = threat.ResolvesViaDns ? $"resolves ({threat.ResolvedIpAddress ?? "unknown IP"})" : "does not resolve";
+      var http = threat.RespondedViaHttp ? $"serving content (HTTP {threat.HttpStatusCode})" : "no HTTP response";
+
+      return string.Join("\n",
+          $"Lookalike domain: *{threat.LookAlikeDomain}*",
+          $"Risk level: *{threat.RiskLevel}*",
+          $"DNS: {dns} | HTTP: {http}",
+          $"<{ctaUrl}|View brand threats>");
+  }
 }
