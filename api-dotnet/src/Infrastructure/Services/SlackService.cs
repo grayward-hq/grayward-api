@@ -159,13 +159,14 @@ public sealed class SlackService(
 
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>(
-            cancellationToken: ct);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
 
         if (!json.GetProperty("ok").GetBoolean())
             logger.LogWarning("Slack message failed: {Error}",
                 json.GetProperty("error").GetString());
-    }
+        else
+            logger.LogInformation("Slack message sent successfully to channel {ChannelId}", channelId);
+            }
 
     public async Task SendMessageViaWebhookUrl(
     string webhookUrl, string text,

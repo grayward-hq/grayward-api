@@ -7,7 +7,7 @@ namespace Application.Features.Alerts.ScanCompleted;
 
 public static class ScanCompletedAlertFactory
 {
-    public static Alert Create(ScanCompletedEvent e, AlertChannel channel)
+    public static Alert Create(ScanCompletedEvent e, AlertChannel channel, string appBaseUrl)
     {
         var severity = e.FindingSeverities.Any(s => s == FindingSeverity.Critical)
             ? AlertSeverity.Critical
@@ -22,7 +22,7 @@ public static class ScanCompletedAlertFactory
             severity: severity,
             deduplicationKey: e.ScanId.ToString(),
             subject: BuildSubject(e),
-            body: BuildBody(e),
+            body: BuildBody(e, appBaseUrl),
             domainId: e.DomainId);
     }
 
@@ -40,7 +40,7 @@ public static class ScanCompletedAlertFactory
         return $"{e.DomainName} — scan completed, no critical issues";
     }
 
-    private static string BuildBody(ScanCompletedEvent e)
+    private static string BuildBody(ScanCompletedEvent e, string appBaseUrl)
     {
         var critical = e.FindingSeverities.Count(s => s == FindingSeverity.Critical);
         var high     = e.FindingSeverities.Count(s => s == FindingSeverity.High);
@@ -72,6 +72,8 @@ public static class ScanCompletedAlertFactory
 
         var findingRowsHtml = BuildFindingRows(critical, high, medium, low);
         var recommendationHtml = BuildRecommendationSection(critical, high, e.DomainName);
+
+         var reportUrl = $"{appBaseUrl}/scan/report?scanId={e.ScanId}";
 
         return AlertEmailTemplates.Wrap(
             title: "Scan Completed",
@@ -134,7 +136,7 @@ public static class ScanCompletedAlertFactory
                 <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
                   <tr>
                     <td style="background-color:#0f172a;border-radius:6px;">
-                      <a href="https://app.vulnwatch.io/scans/{e.ScanId}/report"
+                      <a href="{reportUrl}"
                          style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
                         View Full Report →
                       </a>

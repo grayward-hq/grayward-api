@@ -7,7 +7,7 @@ namespace Application.Features.Alerts.BreachMonitoring;
 
 public static class CredentialBreachAlertFactory
 {
-    public static Alert Create(CredentialBreachEvent e, AlertChannel channel)
+    public static Alert Create(CredentialBreachEvent e, AlertChannel channel, string appBaseUrl)
     {
         return Alert.Create(
             userId: e.Domain.UserId,
@@ -16,7 +16,7 @@ public static class CredentialBreachAlertFactory
             severity: AlertSeverity.Critical,
             deduplicationKey: $"breach-{e.Email.Id}-{e.Email.BreachCount}",
             subject: BuildSubject(e),
-            body: BuildBody(e),
+            body: BuildBody(e, appBaseUrl),
             domainId: e.Domain.Id);
     }
 
@@ -27,7 +27,7 @@ public static class CredentialBreachAlertFactory
                $"({count} breach{(count > 1 ? "es" : "")})";
     }
 
-    private static string BuildBody(CredentialBreachEvent e)
+    private static string BuildBody(CredentialBreachEvent e, string appBaseUrl)
     {
         var email       = e.Email;
         var breachCount = email.BreachCount;
@@ -39,6 +39,9 @@ public static class CredentialBreachAlertFactory
         var moreBreaches = e.BreachNames.Count > 10
             ? $"<p style='margin:8px 0 0;font-size:12px;color:#94a3b8;'>...and {e.BreachNames.Count - 10} more</p>"
             : "";
+        
+         var ctaUrl = $"{appBaseUrl}/trust-compliance?domainId={e.Domain.Id}";
+
 
         return AlertEmailTemplates.Wrap(
             title: "Credential Breach Detected",
@@ -139,7 +142,7 @@ public static class CredentialBreachAlertFactory
                 <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
                   <tr>
                     <td style="background-color:#0f172a;border-radius:6px;">
-                      <a href="https://app.vulnwatch.io/domains/{e.Domain.Id}/breach-monitoring"
+                      <a href="{ctaUrl}"
                          style="display:inline-block;padding:12px 28px;font-size:14px;
                                 font-weight:600;color:#ffffff;text-decoration:none;">
                         View Breach Details →
