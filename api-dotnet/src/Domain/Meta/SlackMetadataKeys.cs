@@ -9,4 +9,5 @@ public static class SlackMetadataKeys
     public const string TeamName       = "team_name";
     public const string WebhookUrl     = "webhook_url";
     public const string WebhookChannel = "webhook_channel";
+    public const string WebhookChannelId = "webhook_channel_id";
 }

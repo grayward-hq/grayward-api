@@ -70,6 +70,7 @@ public class HandleSlackCallbackHandler(
             [SlackMetadataKeys.TeamName] = token.Team.Name ?? "",
             [SlackMetadataKeys.WebhookUrl] = token.IncomingWebhook?.Url ?? "",
             [SlackMetadataKeys.WebhookChannel] = token.IncomingWebhook?.Channel ?? "",
+            [SlackMetadataKeys.WebhookChannelId] = token.IncomingWebhook?.ChannelId ?? "",
         };
 
         if (existing is not null)
