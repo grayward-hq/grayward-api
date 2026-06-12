@@ -163,6 +163,9 @@ public class AlertService : IAlertService
             alert.CreatedAt.ToString("MMM d, yyyy 'at' HH:mm 'UTC'");
 
         var severity = alert.Severity.ToString();
+        var summary = !string.IsNullOrWhiteSpace(alert.Summary)
+        ? alert.Summary
+        : "Open the dashboard for full details.";
 
         return new object[]
         {
@@ -182,7 +185,7 @@ public class AlertService : IAlertService
                 fields = new object[]
                 {
                     new { type = "mrkdwn", text = $"*Severity*\n{severity}" },
-                    new { type = "mrkdwn", text = $"*Status*\nCompleted" },
+                    // new { type = "mrkdwn", text = $"*Status*\nCompleted" },
                     new { type = "mrkdwn", text = $"*Alert*\n{alert.Subject}" },
                     new { type = "mrkdwn", text = $"*Completed At*\n{completedAt}" }
                 }
@@ -190,7 +193,7 @@ public class AlertService : IAlertService
             new
             {
                 type = "section",
-                text = new { type = "mrkdwn", text = $"*Summary*\n{alert.Body}" }
+                text = new { type = "mrkdwn", text = $"*Summary*\n{summary}" }
             },
             new { type = "divider" },
             new

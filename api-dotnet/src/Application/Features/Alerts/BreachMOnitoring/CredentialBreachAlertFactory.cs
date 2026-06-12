@@ -17,7 +17,8 @@ public static class CredentialBreachAlertFactory
             deduplicationKey: $"breach-{e.Email.Id}-{e.Email.BreachCount}",
             subject: BuildSubject(e),
             body: BuildBody(e, appBaseUrl),
-            domainId: e.Domain.Id);
+            domainId: e.Domain.Id,
+            summary: BuildSummary(e, appBaseUrl));
     }
 
     private static string BuildSubject(CredentialBreachEvent e)
@@ -157,5 +158,18 @@ public static class CredentialBreachAlertFactory
                   To manage monitored emails, visit your domain settings.
                 </p>
                 """);
-    }
+  }
+
+  private static string BuildSummary(CredentialBreachEvent e, string appBaseUrl)
+  {
+      var ctaUrl = $"{appBaseUrl}/trust-compliance?domainId={e.Domain.Id}";
+      var breaches = e.BreachNames.Any()
+          ? string.Join(", ", e.BreachNames.Take(5))
+          : "unknown sources";
+
+      return string.Join("\n",
+          $"Email: *{e.Email.EmailAddress}*",
+          $"Breaches found: {e.Email.BreachCount} ({breaches})",
+          $"<{ctaUrl}|View details>");
+  }
 }

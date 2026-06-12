@@ -24,7 +24,8 @@ public static class BrandThreatAlertFactory
             deduplicationKey: $"brand-threat-{e.Threat.Id}",
             subject: BuildSubject(e),
             body: BuildBody(e, appBaseUrl),
-            domainId: e.Domain.Id);
+            domainId: e.Domain.Id,
+            summary: BuildSummary(e, appBaseUrl));
     }
 
     private static string BuildSubject(BrandThreatDetectedEvent e) =>
@@ -229,4 +230,19 @@ public static class BrandThreatAlertFactory
                 </p>
                 """);
     }
+
+  private static string BuildSummary(BrandThreatDetectedEvent e, string appBaseUrl)
+  {
+      var ctaUrl = $"{appBaseUrl}/trust-compliance?domainId={e.Domain.Id}";
+      var threat = e.Threat;
+
+      var dns  = threat.ResolvesViaDns ? $"resolves ({threat.ResolvedIpAddress ?? "unknown IP"})" : "does not resolve";
+      var http = threat.RespondedViaHttp ? $"serving content (HTTP {threat.HttpStatusCode})" : "no HTTP response";
+
+      return string.Join("\n",
+          $"Lookalike domain: *{threat.LookAlikeDomain}*",
+          $"Risk level: *{threat.RiskLevel}*",
+          $"DNS: {dns} | HTTP: {http}",
+          $"<{ctaUrl}|View brand threats>");
+  }
 }
