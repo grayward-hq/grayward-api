@@ -1,6 +1,7 @@
 package com.vulnwatch.worker.model;
 
 public record DomainFinding(
+        String id,       //new
         String scanId,
         String surface,
         String severity,

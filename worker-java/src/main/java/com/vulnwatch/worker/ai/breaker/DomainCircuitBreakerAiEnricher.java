@@ -60,7 +60,9 @@ public class DomainCircuitBreakerAiEnricher {
     private Optional<AiResult> executeEnrichmentWithBreaker(ScanJob job, EngineResult engineResult, SurfaceType surfaceType) {
         try {
             AiResult result = aiCircuitBreaker.executeSupplier(() -> aiEnricher.enrich(job, engineResult));
-            return Optional.of(result);
+            // FIXED: Using ofNullable here ensures that if the supplier swallows an exception
+            // and returns null, we gracefully fall back to an empty Optional instead of throwing an NPE.
+            return Optional.ofNullable(result);
         } catch (CallNotPermittedException e) {
             log.warn("AI circuit breaker OPEN — skipping enrichment [scanId={} surface={}]", job.scanId(), surfaceType.name());
         } catch (Exception e) {

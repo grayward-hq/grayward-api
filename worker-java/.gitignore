@@ -36,5 +36,7 @@ build/
 !application*.properties
 !application-example.properties
 
+src/main/resources/application-dev.properties
+
 .env*.idea/
 dsa-practice/
