@@ -12,6 +12,7 @@ public class Alert : EntityBase
     public string DeduplicationKey { get; init; } = string.Empty;
     public string Subject { get; private set; } = default!;
     public string Body { get; private set; } = default!;
+    public string? Summary { get; private set; }
     public OutboxStatus Status { get; private set; }
     public int NumRetries { get; private set; }
     public DateTime? SentAt { get; private set; }
@@ -27,7 +28,8 @@ public class Alert : EntityBase
           string deduplicationKey,
           string subject,
           string body,
-          Guid? domainId = null)
+          Guid? domainId = null,
+          string? summary = null)
     {
         if (string.IsNullOrWhiteSpace(subject))
             throw new ArgumentException("Subject cannot be null or empty.", nameof(subject));
@@ -44,6 +46,7 @@ public class Alert : EntityBase
             DeduplicationKey = deduplicationKey,
             Subject = subject,
             Body = body,
+            Summary = summary,
             Status = OutboxStatus.Pending,
         };
     }
