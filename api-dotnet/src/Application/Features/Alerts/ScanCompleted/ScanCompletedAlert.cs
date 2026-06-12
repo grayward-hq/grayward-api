@@ -23,7 +23,8 @@ public static class ScanCompletedAlertFactory
             deduplicationKey: e.ScanId.ToString(),
             subject: BuildSubject(e),
             body: BuildBody(e, appBaseUrl),
-            domainId: e.DomainId);
+            domainId: e.DomainId,
+            summary: BuildSummary(e, appBaseUrl));
     }
 
     private static string BuildSubject(ScanCompletedEvent e)
@@ -151,6 +152,25 @@ public static class ScanCompletedAlertFactory
                 </p>
                 """);
     }
+
+    private static string BuildSummary(ScanCompletedEvent e, string appBaseUrl)
+  {
+      var critical = e.FindingSeverities.Count(s => s == FindingSeverity.Critical);
+      var high     = e.FindingSeverities.Count(s => s == FindingSeverity.High);
+      var medium   = e.FindingSeverities.Count(s => s == FindingSeverity.Medium);
+      var low      = e.FindingSeverities.Count(s => s == FindingSeverity.Low);
+      var total    = e.FindingSeverities.Count;
+      var reportUrl = $"{appBaseUrl}/scan/report?scanId={e.ScanId}";
+
+      var lines = new List<string>
+      {
+          $"Security Score: *{e.SecurityScore}/100*",
+          $"Findings: {total} total — {critical} critical, {high} high, {medium} medium, {low} low",
+          $"<{reportUrl}|View full report>"
+      };
+
+      return string.Join("\n", lines);
+  }
 
     private static string BuildFindingRows(int critical, int high, int medium, int low)
     {
