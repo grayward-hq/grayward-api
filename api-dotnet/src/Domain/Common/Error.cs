@@ -17,7 +17,7 @@ public record Error(ErrorCode Code, string Message)
     public static Error NotFound(string message) => new(ErrorCode.NotFound, message);
 
     /// <summary>409 — the request clashes with existing state (e.g. duplicate idempotency key).</summary>
-    public static Error Conflict(string message) => new(ErrorCode.Conflict, message);
+    public static Error Conflict(string message, object? details = null) => new(ErrorCode.Conflict, message);
 
     /// <summary>400 — the request data is invalid or missing required fields.</summary>
     public static Error Validation(string message) => new(ErrorCode.Validation, message);

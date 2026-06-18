@@ -1,0 +1,55 @@
+using Domain.Enums;
+
+namespace Application.Features.Waitlist.DTOs;
+
+public record JoinWaitlistRequest(string Email, string? CompanyName = null);
+
+public record WaitlistResponse(
+    string Email,
+    long Position,
+    WaitlistStatus Status,
+    DateTime CreatedAt,
+    bool EmailConfirmed,
+    DateTime? EmailConfirmedAt = null);
+
+public record WaitlistStatusResponse(
+    string Email,
+    long Position,
+    int TotalOnWaitlist,
+    WaitlistStatus Status,
+    bool EmailConfirmed,
+    DateTime JoinedAt);
+
+public record WaitlistListItemDto(
+    Guid Id,
+    string Email,
+    string? CompanyName,
+    long Position,
+    WaitlistStatus Status,
+    bool EmailConfirmed,
+    DateTime CreatedAt,
+    DateTime? EmailConfirmedAt,
+    DateTime? PromotedAt,
+    string? Notes);
+
+public record WaitlistAnalyticsDto(
+    int TotalOnWaitlist,
+    int PendingCount,
+    int EmailConfirmedCount,
+    int PromotedCount,
+    int CancelledCount,
+    decimal PromotionRate,
+    decimal CancellationRate,
+    double AverageDaysToPromotion,
+    List<(string Company, int Count)> TopCompanies);
+
+public record PromoteWaitlistResponse(
+    Guid WaitlistId,
+    Guid NewUserId,
+    string Email,
+    WaitlistStatus Status,
+    DateTime PromotedAt);
+
+public record CancelWaitlistRequest(string Email);
+
+public record VerifyWaitlistEmailRequest(string Email, string Token);
