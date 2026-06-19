@@ -50,6 +50,11 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
                 Error.NotFound("Waitlist entry not found"));
         }
 
+        if (string.IsNullOrWhiteSpace(entry.Email))
+        {
+            return Result<PromoteWaitlistResponse>.Failure(Error.Validation("Waitlist entry has no valid email address"));
+        }
+
         // Validate status
         if (entry.Status != WaitlistStatus.EmailConfirmed)
         {
@@ -68,7 +73,7 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
         }
 
         // Create user account
-        var newUser = User.Create(entry.Email, cmd.FirstName, cmd.LastName);
+        var newUser = User.Create(entry.Email!, cmd.FirstName, cmd.LastName);
         var createResult = await _userManager.CreateAsync(newUser);
 
         if (!createResult.Succeeded)
@@ -79,13 +84,58 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
                 Error.Validation(createResult.Errors.First().Description));
         }
 
-        // Confirm email on new user
-        await _userManager.ConfirmEmailAsync(newUser, "");
+        // Track whether the identity creation step succeeded for rollback logic
+        bool identityUserCreated = true;
 
-        // Update waitlist entry
-        entry.MarkPromoted(newUser.Id);
-        _waitlistRepo.Update(entry);
-        await _waitlistRepo.SaveChangesAsync(ct);
+        try
+        {
+            // Confirm email on new user
+            await _userManager.ConfirmEmailAsync(newUser, "");
+
+            // Update waitlist entry
+            entry.MarkPromoted(newUser.Id);
+            _waitlistRepo.Update(entry);
+            
+            // Save waitlist modifications
+            await _waitlistRepo.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to complete waitlist promotion for {email}. Executing compensating rollback.", entry.Email);
+
+            // 🛠️ Compensating Rollback: Clean up the dangling identity record
+            if (identityUserCreated)
+            {
+                try
+                {
+                    var deleteResult = await _userManager.DeleteAsync(newUser);
+                    if (!deleteResult.Succeeded)
+                    {
+                        _logger.LogCritical("CRITICAL: Rollback failed. Could not delete dangling identity user {email}: {errors}", 
+                            entry.Email, string.Join(", ", deleteResult.Errors.Select(e => e.Description)));
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Successfully rolled back identity creation for {email}.", entry.Email);
+                    }
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogCritical(rollbackEx, "CRITICAL: Exception occurred during identity rollback for {email}.", entry.Email);
+                }
+            }
+
+            // Rethrow or return failure so the request fails safely
+            return Result<PromoteWaitlistResponse>.Failure(
+                Error.Validation("Failed to finalize waitlist promotion. Please try again."));
+        }
+
+        // Send invitation email (Keep outside the safe database-write try block)
+        if (cmd.SendInvitationEmail)
+        {
+            // ... your existing email logic remains safely here ...
+        }
+
 
         _logger.LogWarning("User promoted from waitlist: {email} -> {userId}", entry.Email, newUser.Id);
 
@@ -95,8 +145,8 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
             try
             {
                 var resetToken = await _userManager.GeneratePasswordResetTokenAsync(newUser);
-                var resetLink = BuildPasswordResetLink(newUser.Email, resetToken);
-                await SendInvitationEmail(newUser.Email, resetLink);
+                var resetLink = BuildPasswordResetLink(newUser.Email!, resetToken);
+                await SendInvitationEmail(newUser.Email!, resetLink);
                 _logger.LogInformation("Invitation email sent to {email}", newUser.Email);
             }
             catch (Exception ex)

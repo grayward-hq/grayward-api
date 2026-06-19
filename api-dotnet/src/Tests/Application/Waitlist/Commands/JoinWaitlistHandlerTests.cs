@@ -138,6 +138,6 @@ public class JoinWaitlistHandlerTests
     private static Mock<UserManager<UserEntity>> MockUserManager()
     {
         var store = new Mock<IUserStore<UserEntity>>();
-        return new Mock<UserManager<UserEntity>>(store.Object, null, null, null, null, null, null, null, null);
+        return new Mock<UserManager<UserEntity>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
     }
 }

@@ -119,26 +119,46 @@ public class WaitlistRepository : IWaitlistRepository
             .CountAsync(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt >= since, ct);
     }
 
-    public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
-    {
-        var promoted = await _context.Waitlists
-            .Where(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt.HasValue)
-            .Select(w => new
-            {
-                CreatedAt = w.CreatedAt,
-                PromotedAt = w.PromotedAt.Value
-            })
-            .ToListAsync(ct);
+    // public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
+    // {
+    //     var promoted = await _context.Waitlists
+    //         .Where(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt.HasValue)
+    //         .Select(w => new
+    //         {
+    //             CreatedAt = w.CreatedAt,
+    //             PromotedAt = w.PromotedAt!.Value
+    //         })
+    //         .ToListAsync(ct);
 
-        if (promoted.Count == 0)
-            return 0;
+    //     if (promoted.Count == 0)
+    //         return 0;
 
-        var averageTicks = promoted
-            .Select(p => (p.PromotedAt - p.CreatedAt).TotalSeconds)
-            .Average();
+    //     var averageTicks = promoted
+    //         .Select(p => (p.PromotedAt - p.CreatedAt).TotalSeconds)
+    //         .Average();
 
-        return averageTicks / (24 * 3600); // Convert to days
-    }
+    //     return averageTicks / (24 * 3600); // Convert to days
+    // }
+
+
+public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
+{
+    // 1. Check if any records match first to avoid database average errors on empty sets
+    var hasPromoted = await _context.Waitlists
+        .AnyAsync(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt != null, ct);
+
+    if (!hasPromoted)
+        return 0;
+
+    // 2. Let PostgreSQL calculate the average seconds directly
+    var averageSeconds = await _context.Waitlists
+        .Where(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt != null)
+        .Select(w => (w.PromotedAt!.Value - w.CreatedAt).TotalSeconds)
+        .AverageAsync(ct);
+
+    return averageSeconds / (24 * 3600); // Convert seconds to days
+}
+
 
     public async Task<List<(string Company, int Count)>> GetTopCompanies(CancellationToken ct, int limit = 10)
     {

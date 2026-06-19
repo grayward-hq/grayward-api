@@ -44,5 +44,9 @@ public class CancelWaitlistValidator : AbstractValidator<CancelWaitlistRequest>
             .NotEmpty()
             .EmailAddress()
             .WithMessage("Invalid email format.");
+
+        RuleFor(x => x.Token)
+            .NotEmpty()
+            .WithMessage("Cancellation token is required.");
     }
 }

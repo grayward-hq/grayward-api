@@ -50,6 +50,6 @@ public record PromoteWaitlistResponse(
     WaitlistStatus Status,
     DateTime PromotedAt);
 
-public record CancelWaitlistRequest(string Email);
+public record CancelWaitlistRequest(string Email, string Token);
 
 public record VerifyWaitlistEmailRequest(string Email, string Token);

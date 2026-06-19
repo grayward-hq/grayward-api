@@ -110,7 +110,7 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new CancelWaitlistCommand(request.Email), ct);
+            new CancelWaitlistCommand(request.Email, request.Token), ct);
         return result.ToHttpResponse(this);
     }
 

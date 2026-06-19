@@ -2,6 +2,7 @@ using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Entities;
+using Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -38,53 +39,65 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         _logger = logger;
     }
 
+
+
     public async Task<Result<WaitlistResponse>> Handle(JoinWaitlistCommand cmd, CancellationToken ct)
     {
+        var normalizedEmail = cmd.Email.ToLower();
+
+        var genericSuccessResponse = new WaitlistResponse(
+            normalizedEmail,
+            Position: 0, 
+            Status: WaitlistStatus.Pending, 
+            CreatedAt: DateTime.UtcNow,
+            EmailConfirmed: false
+        );
+
         // Check if email already on waitlist
-        var existingWaitlistEntry = await _waitlistRepo.FindByEmail(cmd.Email.ToLower(), ct);
+        var existingWaitlistEntry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
         if (existingWaitlistEntry is not null)
         {
-            _logger.LogInformation("User {email} attempted to join waitlist but already exists", cmd.Email);
-            return Result<WaitlistResponse>.Failure(
-                Error.Conflict("Email already on waitlist", 
-                    new { position = existingWaitlistEntry.Position, status = existingWaitlistEntry.Status.ToString() }));
+            _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already exists.", cmd.Email);
+            return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
 
         // Check if email already registered as user
         var existingUser = await _userManager.FindByEmailAsync(cmd.Email);
         if (existingUser is not null)
         {
-            _logger.LogInformation("User {email} attempted to join waitlist but already registered", cmd.Email);
-            return Result<WaitlistResponse>.Failure(
-                Error.Conflict("Email is already a registered user"));
+            _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already registered.", cmd.Email);
+            return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
 
         // Get next position
         var position = await _waitlistRepo.GetNextPosition(ct);
 
-        // Create waitlist entry
-        var entry = WaitlistEntity.Create(cmd.Email.ToLower(), cmd.CompanyName, position);
+        // Create waitlist entry in memory
+        var entry = WaitlistEntity.Create(normalizedEmail, cmd.CompanyName, position);
 
         // Generate confirmation token
         var confirmationToken = GenerateToken();
         entry.GenerateEmailConfirmationToken(confirmationToken);
 
-        // Save
-        await _waitlistRepo.AddAsync(entry, ct);
-        await _waitlistRepo.SaveChangesAsync(ct);
-
-        // Send confirmation email
+        // 1. Send the confirmation email FIRST
         try
         {
             var confirmLink = BuildConfirmationLink(cmd.Email, confirmationToken);
             await SendConfirmationEmail(cmd.Email, position, confirmLink);
-            _logger.LogInformation("Confirmation email sent to {email}", cmd.Email);
+            _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send confirmation email to {email}", cmd.Email);
-            // Don't fail the request — user can resend later
+            _logger.LogError(ex, "Failed to send confirmation email to {email}. Aborting registration.", cmd.Email);
+            
+            // Return failure immediately — nothing was saved to the DB, so the user isn't stuck
+            return Result<WaitlistResponse>.Failure(
+                Error.Validation("Could not send confirmation email. Please verify your address and try again."));
         }
+
+        // 2. Save to the database ONLY if the email was successfully sent
+        await _waitlistRepo.AddAsync(entry, ct);
+        await _waitlistRepo.SaveChangesAsync(ct);
 
         return Result<WaitlistResponse>.Success(
             new WaitlistResponse(
@@ -94,6 +107,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 entry.CreatedAt,
                 entry.EmailConfirmed));
     }
+
+
 
     private string GenerateToken()
     {
