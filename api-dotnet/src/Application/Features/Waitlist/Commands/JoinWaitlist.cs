@@ -167,7 +167,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             </p>
 
             <p style='font-size: 12px; color: #999; margin-top: 40px;'>
-                This link expires in 7 days.
+                This confirmation link can be used until your email is confirmed.
             </p>
         </div>
     </body>
