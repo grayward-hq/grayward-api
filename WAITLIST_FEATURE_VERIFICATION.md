@@ -123,6 +123,8 @@ Expected: 200 OK with WaitlistStatusResponse
 - [ ] Returns total count of waitlist
 - [ ] Returns correct status
 - [ ] Case-insensitive email lookup works
+  - [ ] Join with `Test@Example.com`, then query `GET /api/waitlist/status?email=test@example.com`
+  - [ ] Response returns the same waitlist entry with normalized email `test@example.com`
 
 ### Endpoint: GET /api/waitlist/verify
 
@@ -142,7 +144,7 @@ Expected: 200 OK
 ```bash
 curl -X POST http://localhost:5000/api/waitlist/cancel \
   -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com"}'
+  -d '{"email": "test@example.com", "token": "<valid-cancellation-token>"}'
 ```
 
 Expected: 200 OK
@@ -150,6 +152,11 @@ Expected: 200 OK
 - [ ] EmailConfirmed entries can be cancelled
 - [ ] Promoted entries cannot be cancelled
 - [ ] Already cancelled entries return error
+- [ ] Case-insensitive cancellation works
+  - [ ] Join with `Test@Example.com`
+  - [ ] Generate/use a valid cancellation token for that waitlist entry
+  - [ ] Cancel with body `{"email":"test@example.com","token":"<valid-cancellation-token>"}`
+  - [ ] Same entry is cancelled
 
 ### Endpoint: GET /api/admin/waitlist/list (Admin Only)
 
@@ -213,7 +220,7 @@ curl -X DELETE "http://localhost:5000/api/admin/waitlist/{id}" \
   -H "Authorization: Bearer <jwt_token>"
 ```
 
-Expected: 200 OK
+Expected: 204 No Content
 - [ ] Entry deleted from database
 - [ ] Subsequent queries return NotFound
 - [ ] Authorization required
@@ -281,15 +288,19 @@ done
 
 ## Email Service Verification
 
+How to verify: run the API against a test SMTP inbox such as Mailhog (`localhost:1025`) or Mailtrap, perform the waitlist action, then inspect the captured message subject, recipient, body, and links before clicking them.
+
 - [ ] Confirmation email sent when user joins
+  - [ ] Subject is `Confirm Your Email - Vulnwatch Waitlist`
   - [ ] Contains position on waitlist
-  - [ ] Contains verification link with correct token
+  - [ ] Contains verification link with query parameters, e.g. `<FrontendUrl:WaitlistVerify>/?email=test%40example.com&token=<token>`
   - [ ] Contains email address
   - [ ] Uses configured FromEmail
 
 - [ ] Invitation email sent when promoted
-  - [ ] Contains password reset link
-  - [ ] Contains user's name
+  - [ ] Subject is `Welcome to Vulnwatch - Set Your Password`
+  - [ ] Contains password reset link with query parameters, e.g. `<FrontendUrl:PasswordReset>/?email=test%40example.com&token=<encoded-reset-token>`
+  - [ ] Contains welcome and set-password instructions
   - [ ] Uses configured FromEmail
   - [ ] Link includes valid password reset token
 
