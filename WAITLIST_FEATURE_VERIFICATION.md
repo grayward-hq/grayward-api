@@ -68,9 +68,9 @@ dotnet test --filter "Waitlist"
 
 - [ ] JoinWaitlistHandlerTests
   - [ ] Handle_WithValidEmail_CreatesWaitlistEntry passes
-  - [ ] Handle_WithDuplicateEmail_ReturnsBadRequest passes
-  - [ ] Handle_WithRegisteredUser_ReturnsBadRequest passes
-  - [ ] Handle_EmailServiceFails_StillSucceeds passes
+  - [ ] Handle_WithDuplicateEmail_ReturnsGenericSuccess passes
+  - [ ] Handle_WithRegisteredUser_ReturnsGenericSuccess passes
+  - [ ] Handle_EmailServiceFails_ReturnsValidationAndDoesNotSave passes
 
 - [ ] VerifyWaitlistEmailHandlerTests
   - [ ] Handle_WithValidToken_ConfirmsEmail passes
@@ -109,7 +109,7 @@ Expected: 200 OK with WaitlistResponse
 - [ ] Status is "Pending"
 - [ ] EmailConfirmed is false
 - [ ] Email validation works (reject invalid emails)
-- [ ] Duplicate email rejected
+- [ ] Duplicate email returns generic success without creating a new entry
 - [ ] CompanyName is optional
 
 ### Endpoint: GET /api/waitlist/status
@@ -158,10 +158,10 @@ Expected: 200 OK
   - [ ] Cancel with body `{"email":"test@example.com","token":"<valid-cancellation-token>"}`
   - [ ] Same entry is cancelled
 
-### Endpoint: GET /api/admin/waitlist/list (Admin Only)
+### Endpoint: GET /api/waitlist/admin/list (Admin Only)
 
 ```bash
-curl -X GET "http://localhost:5000/api/admin/waitlist/list?page=1&pageSize=10" \
+curl -X GET "http://localhost:5000/api/waitlist/admin/list?page=1&pageSize=10" \
   -H "Authorization: Bearer <jwt_token>"
 ```
 
@@ -173,16 +173,11 @@ Expected: 200 OK with PagedResult
 - [ ] TotalCount is correct
 - [ ] Authorization required (401 without token)
 
-### Endpoint: POST /api/admin/waitlist/{id}/promote (Admin Only)
+### Endpoint: POST /api/waitlist/admin/{id}/promote (Admin Only)
 
 ```bash
-curl -X POST "http://localhost:5000/api/admin/waitlist/{id}/promote" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <jwt_token>" \
-  -d '{
-    "firstName": "John",
-    "lastName": "Doe"
-  }'
+curl -X POST "http://localhost:5000/api/waitlist/admin/{id}/promote?firstName=John&lastName=Doe&sendInvitationEmail=true" \
+  -H "Authorization: Bearer <jwt_token>"
 ```
 
 Expected: 200 OK with PromoteWaitlistResponse
@@ -194,10 +189,10 @@ Expected: 200 OK with PromoteWaitlistResponse
 - [ ] PromotedUserId matches new User ID
 - [ ] Authorization required
 
-### Endpoint: PUT /api/admin/waitlist/{id} (Admin Only)
+### Endpoint: PUT /api/waitlist/admin/{id} (Admin Only)
 
 ```bash
-curl -X PUT "http://localhost:5000/api/admin/waitlist/{id}" \
+curl -X PUT "http://localhost:5000/api/waitlist/admin/{id}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{
@@ -213,10 +208,10 @@ Expected: 200 OK with updated entry
 - [ ] Promoted/Cancelled status changes blocked
 - [ ] Authorization required
 
-### Endpoint: DELETE /api/admin/waitlist/{id} (Admin Only)
+### Endpoint: DELETE /api/waitlist/admin/{id} (Admin Only)
 
 ```bash
-curl -X DELETE "http://localhost:5000/api/admin/waitlist/{id}" \
+curl -X DELETE "http://localhost:5000/api/waitlist/admin/{id}" \
   -H "Authorization: Bearer <jwt_token>"
 ```
 
@@ -225,10 +220,10 @@ Expected: 204 No Content
 - [ ] Subsequent queries return NotFound
 - [ ] Authorization required
 
-### Endpoint: GET /api/admin/waitlist/analytics (Admin Only)
+### Endpoint: GET /api/waitlist/admin/analytics (Admin Only)
 
 ```bash
-curl "http://localhost:5000/api/admin/waitlist/analytics" \
+curl "http://localhost:5000/api/waitlist/admin/analytics" \
   -H "Authorization: Bearer <jwt_token>"
 ```
 

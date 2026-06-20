@@ -369,18 +369,19 @@ void UpdatePosition(long newPosition)
 
 ---
 
-#### POST /api/admin/waitlist/{waitlistId}/promote
+#### POST /api/waitlist/admin/{waitlistId}/promote
 **Purpose:** Promote waitlist entry to full user account
 
 **Authentication Required:** Yes (Admin role)
 
-**Request:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "sendInvitationEmail": true
-}
+**Query Parameters:**
+- `firstName` (optional) - First name for the new user
+- `lastName` (optional) - Last name for the new user
+- `sendInvitationEmail` (optional, default: `true`) - Whether to send the password setup invitation email
+
+**Example:**
+```http
+POST /api/waitlist/admin/{waitlistId}/promote?firstName=John&lastName=Doe&sendInvitationEmail=true
 ```
 
 **Response (200 OK):**
@@ -424,7 +425,7 @@ void UpdatePosition(long newPosition)
 1. Validate waitlist entry exists and status is `EmailConfirmed`
 2. Check email not already registered as User
 3. Create User account using email from waitlist
-4. Set User.FirstName, User.LastName from request (or null)
+4. Set User.FirstName, User.LastName from query parameters (or null)
 5. Mark email as confirmed on User
 6. Update Waitlist entry: status = `Promoted`, PromotedUserId = new User.Id
 7. Send invitation email (if flag set) with temporary login link/password reset token
@@ -432,7 +433,7 @@ void UpdatePosition(long newPosition)
 
 ---
 
-#### PUT /api/admin/waitlist/{waitlistId}
+#### PUT /api/waitlist/admin/{waitlistId}
 **Purpose:** Update waitlist entry metadata
 
 **Authentication Required:** Yes (Admin role)
@@ -464,7 +465,7 @@ void UpdatePosition(long newPosition)
 
 ---
 
-#### DELETE /api/admin/waitlist/{waitlistId}
+#### DELETE /api/waitlist/admin/{waitlistId}
 **Purpose:** Permanently delete waitlist entry (hard delete)
 
 **Authentication Required:** Yes (Admin role)
@@ -473,7 +474,7 @@ void UpdatePosition(long newPosition)
 
 ---
 
-#### GET /api/admin/waitlist/analytics
+#### GET /api/waitlist/admin/analytics
 **Purpose:** Get waitlist analytics/metrics
 
 **Authentication Required:** Yes (Admin role)

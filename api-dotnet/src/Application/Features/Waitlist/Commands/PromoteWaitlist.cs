@@ -159,7 +159,13 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
 
     private string BuildPasswordResetLink(string email, string token)
     {
-        var baseUrl = _config["FrontendUrl:PasswordReset"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
+        var baseUrl = _config["FrontendUrl:PasswordReset"] ?? _config["FrontendUrl:Base"];
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new InvalidOperationException(
+                "FrontendUrl:PasswordReset or FrontendUrl:Base must be configured to build password reset links.");
+        }
+
         var encodedToken = Uri.EscapeDataString(token);
         return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={encodedToken}";
     }

@@ -25,6 +25,7 @@ public sealed class NoOpEmailService : IEmailService
 public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private SqliteConnection? _connection;
+    private readonly Dictionary<string, string?> _originalEnvironmentVariables = new();
 
     public VulnWatchWebAppFactory()
     {
@@ -78,6 +79,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["Redis:Configuration"] = "localhost:6379",
                 ["FrontendUrl:Verify"] = "https://test.example.com/verify",
                 ["FrontendUrl:ForgotPassword"] = "https://test.example.com/reset",
+                ["FrontendUrl:PasswordReset"] = "https://test.example.com/set-password",
                 ["Cors:AllowedOrigins:0"] = "https://test.example.com",
                 ["Dns:Lookup"] = "false",
                 ["RateLimit:Auth:PermitLimit"] = "1000",
@@ -105,9 +107,16 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public new async Task DisposeAsync()
     {
-        await base.DisposeAsync();
-        if (_connection is not null)
-            await _connection.DisposeAsync();
+        try
+        {
+            await base.DisposeAsync();
+            if (_connection is not null)
+                await _connection.DisposeAsync();
+        }
+        finally
+        {
+            RestoreEnvironmentVariables();
+        }
     }
 
     public async Task<(User user, string token)> CreateAuthenticatedUserAsync(
@@ -170,9 +179,20 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         return domain.Id;
     }
 
-    private static void SetDefaultEnvironmentVariable(string key, string value)
+    private void SetDefaultEnvironmentVariable(string key, string value)
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+        if (!_originalEnvironmentVariables.ContainsKey(key))
+            _originalEnvironmentVariables[key] = Environment.GetEnvironmentVariable(key);
+
+        if (string.IsNullOrWhiteSpace(_originalEnvironmentVariables[key]))
             Environment.SetEnvironmentVariable(key, value);
+    }
+
+    private void RestoreEnvironmentVariables()
+    {
+        foreach (var (key, value) in _originalEnvironmentVariables)
+        {
+            Environment.SetEnvironmentVariable(key, value);
+        }
     }
 }

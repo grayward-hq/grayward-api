@@ -91,6 +91,48 @@ public class PromoteWaitlistHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithSendInvitationEmailFalse_ConfirmsUserEmailWithoutSendingPasswordSetupInvite()
+    {
+        // Arrange
+        var entry = WaitlistEntity.Create("test@example.com", null, 1L);
+        entry.ConfirmEmail();
+        UserEntity? createdUser = null;
+
+        _mockWaitlistRepo.Setup(r => r.GetById(entry.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockUserManager.Setup(um => um.FindByEmailAsync(entry.Email))
+            .ReturnsAsync((UserEntity?)null);
+        _mockUserManager.Setup(um => um.CreateAsync(It.IsAny<UserEntity>()))
+            .Callback<UserEntity>(user => createdUser = user)
+            .ReturnsAsync(IdentityResult.Success);
+        _mockUserManager.Setup(um => um.GenerateEmailConfirmationTokenAsync(It.IsAny<UserEntity>()))
+            .ReturnsAsync("confirm-token");
+        _mockUserManager.Setup(um => um.ConfirmEmailAsync(It.IsAny<UserEntity>(), "confirm-token"))
+            .Callback<UserEntity, string>((user, _) => user.EmailConfirmed = true)
+            .ReturnsAsync(IdentityResult.Success);
+
+        // Act
+        var result = await _handler.Handle(
+            new PromoteWaitlistCommand(entry.Id, SendInvitationEmail: false),
+            CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(createdUser);
+        Assert.True(createdUser!.EmailConfirmed);
+        Assert.Equal(WaitlistStatus.Promoted, entry.Status);
+        Assert.Equal(createdUser.Id, entry.PromotedUserId);
+
+        _mockUserManager.Verify(um => um.CreateAsync(It.Is<UserEntity>(u => u.Email == entry.Email)), Times.Once);
+        _mockUserManager.Verify(um => um.GenerateEmailConfirmationTokenAsync(createdUser), Times.Once);
+        _mockUserManager.Verify(um => um.ConfirmEmailAsync(createdUser, "confirm-token"), Times.Once);
+        _mockUserManager.Verify(um => um.GeneratePasswordResetTokenAsync(It.IsAny<UserEntity>()), Times.Never);
+        _mockEmailService.Verify(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _mockWaitlistRepo.Verify(r => r.Update(entry), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_WhenEmailConfirmationFails_RollsBackUserAndDoesNotPromote()
     {
         // Arrange

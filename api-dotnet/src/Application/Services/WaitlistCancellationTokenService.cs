@@ -24,7 +24,20 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
             ?? throw new InvalidOperationException(
                 "Waitlist:CancellationTokenSecret must be configured.");
 
-        _key = Encoding.UTF8.GetBytes(secret);
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException(
+                "Waitlist:CancellationTokenSecret must not be empty or whitespace.");
+        }
+
+        var key = Encoding.UTF8.GetBytes(secret);
+        if (key.Length < 32)
+        {
+            throw new InvalidOperationException(
+                "Waitlist:CancellationTokenSecret must be at least 32 bytes when UTF-8 encoded.");
+        }
+
+        _key = key;
         _ttl = TimeSpan.FromDays(30);
     }
 
@@ -93,6 +106,8 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
         var s = input.Replace('-', '+').Replace('_', '/');
         switch (s.Length % 4)
         {
+            case 1:
+                throw new FormatException("Invalid Base64Url input length.");
             case 2:
                 s += "==";
                 break;
