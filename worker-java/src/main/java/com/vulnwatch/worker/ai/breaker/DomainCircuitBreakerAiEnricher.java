@@ -19,6 +19,11 @@ import java.util.Optional;
 
 /**
  * Per-surface AI enrichment wrapped by a Resilience4j CircuitBreaker.
+ *
+ * AiResult now carries only the fields the AI is authoritative for:
+ * explanation, remediationSteps, certExpiry. Severity, title, and cveId
+ * are owned by DomainPersistence and derived from scanner output — they
+ * are not part of AiResult and are never logged or referenced here.
  */
 @Slf4j
 @Component
@@ -32,10 +37,11 @@ public class DomainCircuitBreakerAiEnricher {
     /**
      * Attempts AI enrichment for a single surface result.
      *
-     * @param job the originating scan job
+     * @param job  the originating scan job
      * @param engineResult the scanner output for this surface
      * @param surfaceType  the surface being enriched
-     * @return AiResult or null — callers must handle null gracefully
+     * @return AiResult (explanation + remediationSteps + certExpiry) or null —
+     *         callers must handle null gracefully
      */
     public AiResult enrich(ScanJob job, EngineResult engineResult, SurfaceType surfaceType) {
         String scanId = job.scanId();
@@ -57,28 +63,33 @@ public class DomainCircuitBreakerAiEnricher {
         };
     }
 
-    private Optional<AiResult> executeEnrichmentWithBreaker(ScanJob job, EngineResult engineResult, SurfaceType surfaceType) {
+    private Optional<AiResult> executeEnrichmentWithBreaker(
+            ScanJob job, EngineResult engineResult, SurfaceType surfaceType) {
         try {
-            AiResult result = aiCircuitBreaker.executeSupplier(() -> aiEnricher.enrich(job, engineResult));
-            // FIXED: Using ofNullable here ensures that if the supplier swallows an exception
-            // and returns null, we gracefully fall back to an empty Optional instead of throwing an NPE.
+            AiResult result = aiCircuitBreaker.executeSupplier(
+                    () -> aiEnricher.enrich(job, engineResult));
+            // ofNullable: if the supplier swallows an exception and returns null,
+            // we fall back to an empty Optional instead of propagating an NPE.
             return Optional.ofNullable(result);
         } catch (CallNotPermittedException e) {
-            log.warn("AI circuit breaker OPEN — skipping enrichment [scanId={} surface={}]", job.scanId(), surfaceType.name());
+            log.warn("AI circuit breaker OPEN — skipping enrichment [scanId={} surface={}]",
+                    job.scanId(), surfaceType.name());
         } catch (Exception e) {
-            log.error("AI enrichment threw unexpected exception [scanId={} surface={}]: {}", job.scanId(), surfaceType.name(), e.getMessage(), e);
+            log.error("AI enrichment threw unexpected exception [scanId={} surface={}]: {}",
+                    job.scanId(), surfaceType.name(), e.getMessage(), e);
         }
         return Optional.empty();
     }
 
     private AiResult handleSuccess(String scanId, SurfaceType surfaceType, AiResult result) {
         surfaceStateManager.transition(scanId, surfaceType, SurfaceStatus.SUCCESS);
-        log.debug("AI enrichment succeeded [scanId={} surface={} severity={}]", scanId, surfaceType.name(), result.severity());
+        log.debug("AI enrichment succeeded [scanId={} surface={}]", scanId, surfaceType.name());
         return result;
     }
 
     private AiResult handleFailure(String scanId, SurfaceType surfaceType) {
-        surfaceStateManager.transitionFailed(scanId, surfaceType, SurfaceStatus.SUCCESS_NO_AI, FailureReason.AI_ERROR);
+        surfaceStateManager.transitionFailed(
+                scanId, surfaceType, SurfaceStatus.SUCCESS_NO_AI, FailureReason.AI_ERROR);
         return null;
     }
 }
