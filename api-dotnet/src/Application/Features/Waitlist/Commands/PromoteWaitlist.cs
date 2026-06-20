@@ -90,7 +90,23 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
         try
         {
             // Confirm email on new user
-            await _userManager.ConfirmEmailAsync(newUser, "");
+            var confirmationToken = await _userManager.GenerateEmailConfirmationTokenAsync(newUser);
+            var confirmationResult = await _userManager.ConfirmEmailAsync(newUser, confirmationToken);
+
+            if (!confirmationResult.Succeeded)
+            {
+                var errors = string.Join(", ", confirmationResult.Errors.Select(e => e.Description));
+                _logger.LogError("Failed to confirm promoted user email for {email}: {errors}", entry.Email, errors);
+                throw new InvalidOperationException("Failed to confirm promoted user email.");
+            }
+
+            if (cmd.SendInvitationEmail)
+            {
+                var resetToken = await _userManager.GeneratePasswordResetTokenAsync(newUser);
+                var resetLink = BuildPasswordResetLink(newUser.Email!, resetToken);
+                await SendInvitationEmail(newUser.Email!, resetLink);
+                _logger.LogInformation("Invitation email sent to {email}", newUser.Email);
+            }
 
             // Update waitlist entry
             entry.MarkPromoted(newUser.Id);
@@ -130,31 +146,7 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
                 Error.Validation("Failed to finalize waitlist promotion. Please try again."));
         }
 
-        // Send invitation email (Keep outside the safe database-write try block)
-        if (cmd.SendInvitationEmail)
-        {
-            // ... your existing email logic remains safely here ...
-        }
-
-
-        _logger.LogWarning("User promoted from waitlist: {email} -> {userId}", entry.Email, newUser.Id);
-
-        // Send invitation email
-        if (cmd.SendInvitationEmail)
-        {
-            try
-            {
-                var resetToken = await _userManager.GeneratePasswordResetTokenAsync(newUser);
-                var resetLink = BuildPasswordResetLink(newUser.Email!, resetToken);
-                await SendInvitationEmail(newUser.Email!, resetLink);
-                _logger.LogInformation("Invitation email sent to {email}", newUser.Email);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send invitation email to {email}", newUser.Email);
-                // Don't fail the entire operation
-            }
-        }
+        _logger.LogInformation("User promoted from waitlist: {email} -> {userId}", entry.Email, newUser.Id);
 
         return Result<PromoteWaitlistResponse>.Success(
             new PromoteWaitlistResponse(

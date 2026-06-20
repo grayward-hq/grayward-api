@@ -25,7 +25,7 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
                 "Waitlist:CancellationTokenSecret must be configured.");
 
         _key = Encoding.UTF8.GetBytes(secret);
-        _ttl = TimeSpan.FromDays(30); // cancellation links remain valid for 30 days
+        _ttl = TimeSpan.FromDays(30);
     }
 
     public string GenerateToken(Guid waitlistEntryId, string email)
@@ -33,8 +33,7 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
         var expiry = DateTimeOffset.UtcNow.Add(_ttl).ToUnixTimeSeconds();
         var signature = ComputeSignature(waitlistEntryId, email, expiry);
 
-        var payload = $"{expiry}.{Base64UrlEncode(signature)}";
-        return payload;
+        return $"{expiry}.{Base64UrlEncode(signature)}";
     }
 
     public bool ValidateToken(string token, Guid waitlistEntryId, string email)
@@ -57,7 +56,7 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
 
         if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiry)
         {
-            return false; // expired
+            return false;
         }
 
         byte[] providedSignature;
@@ -72,7 +71,6 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
 
         var expectedSignature = ComputeSignature(waitlistEntryId, email, expiry);
 
-        // Constant-time comparison to avoid timing attacks.
         return CryptographicOperations.FixedTimeEquals(providedSignature, expectedSignature);
     }
 
@@ -95,9 +93,14 @@ public class WaitlistCancellationTokenService : IWaitlistCancellationTokenServic
         var s = input.Replace('-', '+').Replace('_', '/');
         switch (s.Length % 4)
         {
-            case 2: s += "=="; break;
-            case 3: s += "="; break;
+            case 2:
+                s += "==";
+                break;
+            case 3:
+                s += "=";
+                break;
         }
+
         return Convert.FromBase64String(s);
     }
 }

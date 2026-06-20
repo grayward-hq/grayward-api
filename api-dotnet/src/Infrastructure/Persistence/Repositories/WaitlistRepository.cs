@@ -119,27 +119,6 @@ public class WaitlistRepository : IWaitlistRepository
             .CountAsync(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt >= since, ct);
     }
 
-    // public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
-    // {
-    //     var promoted = await _context.Waitlists
-    //         .Where(w => w.Status == WaitlistStatus.Promoted && w.PromotedAt.HasValue)
-    //         .Select(w => new
-    //         {
-    //             CreatedAt = w.CreatedAt,
-    //             PromotedAt = w.PromotedAt!.Value
-    //         })
-    //         .ToListAsync(ct);
-
-    //     if (promoted.Count == 0)
-    //         return 0;
-
-    //     var averageTicks = promoted
-    //         .Select(p => (p.PromotedAt - p.CreatedAt).TotalSeconds)
-    //         .Average();
-
-    //     return averageTicks / (24 * 3600); // Convert to days
-    // }
-
 
 public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
 {

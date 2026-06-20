@@ -213,11 +213,11 @@ void UpdatePosition(long newPosition)
 
 ---
 
-#### GET /api/waitlist/status/{email}
+#### GET /api/waitlist/status
 **Purpose:** Check waitlist status without authentication
 
 **Request Parameters:**
-- `email` (query or route param) - Email address to check
+- `email` (query param, format: `?email=value`) - Email address to check
 
 **Response (200 OK):**
 ```json
@@ -317,7 +317,7 @@ void UpdatePosition(long newPosition)
 
 ### 4.2 Protected Endpoints (Admin/Authenticated Users)
 
-#### GET /api/admin/waitlist
+#### GET /api/waitlist/admin/list
 **Purpose:** List all waitlist entries with filtering/pagination
 
 **Authentication Required:** Yes (Admin role or elevated permission)
