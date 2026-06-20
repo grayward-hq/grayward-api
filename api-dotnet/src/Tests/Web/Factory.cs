@@ -26,6 +26,17 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 {
     private SqliteConnection? _connection;
 
+    public VulnWatchWebAppFactory()
+    {
+        SetDefaultEnvironmentVariable("ConnectionStrings__DefaultConnectionString", "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test");
+        SetDefaultEnvironmentVariable("Jwt__SecretKey", "super-secret-test-key-32-chars-min!!");
+        SetDefaultEnvironmentVariable("Jwt__ExpireInMinute", "60");
+        SetDefaultEnvironmentVariable("Jwt__RefreshTokenExpiryDays", "7");
+        SetDefaultEnvironmentVariable("Cors__AllowedOrigins__0", "https://test.example.com");
+        SetDefaultEnvironmentVariable("Contact__InternalEmail", "support@example.com");
+        SetDefaultEnvironmentVariable("Waitlist__CancellationTokenSecret", "test-waitlist-cancellation-secret-32-chars");
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         _connection = new SqliteConnection("DataSource=:memory:");
@@ -58,6 +69,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["ConnectionStrings:DefaultConnectionString"] = "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test",
                 ["Jwt:SecretKey"] = "super-secret-test-key-32-chars-min!!",
                 ["Jwt:ExpireInMinute"] = "60",
                 ["Jwt:RefreshTokenExpiryDays"] = "7",
@@ -73,6 +85,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["RateLimit:General:PermitLimit"] = "1000",
                 ["RateLimit:General:WindowSeconds"] = "60",
                 ["Contact:InternalEmail"] = "support@example.com",
+                ["Waitlist:CancellationTokenSecret"] = "test-waitlist-cancellation-secret-32-chars",
                 ["SmtpCredentials:Host"] = "smtp.test.com",
                 ["SmtpCredentials:Port"] = "587",
                 ["SmtpCredentials:Username"] = "test@test.com",
@@ -155,5 +168,11 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         await db.SaveChangesAsync();
 
         return domain.Id;
+    }
+
+    private static void SetDefaultEnvironmentVariable(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+            Environment.SetEnvironmentVariable(key, value);
     }
 }

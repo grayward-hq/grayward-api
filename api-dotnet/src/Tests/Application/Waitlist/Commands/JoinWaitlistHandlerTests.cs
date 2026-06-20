@@ -71,7 +71,7 @@ public class JoinWaitlistHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithDuplicateEmail_ReturnsBadRequest()
+    public async Task Handle_WithDuplicateEmail_ReturnsGenericSuccess()
     {
         // Arrange
         var cmd = new JoinWaitlistCommand("test@example.com");
@@ -85,15 +85,17 @@ public class JoinWaitlistHandlerTests
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
         // Assert
-        Assert.False(result.IsSuccess);
-        Assert.NotNull(result.Error);
-        Assert.Equal(ErrorCode.Conflict, result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value);
+        Assert.Equal("test@example.com", result.Value!.Email);
+        Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
 
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockEmailService.Verify(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_WithRegisteredUser_ReturnsBadRequest()
+    public async Task Handle_WithRegisteredUser_ReturnsGenericSuccess()
     {
         // Arrange
         var cmd = new JoinWaitlistCommand("test@example.com");
@@ -108,13 +110,17 @@ public class JoinWaitlistHandlerTests
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
         // Assert
-        Assert.False(result.IsSuccess);
-        Assert.NotNull(result.Error);
-        Assert.Equal(ErrorCode.Conflict, result.Error.Code);
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value);
+        Assert.Equal("test@example.com", result.Value!.Email);
+        Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
+
+        _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockEmailService.Verify(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_EmailServiceFails_StillSucceeds()
+    public async Task Handle_EmailServiceFails_ReturnsValidationAndDoesNotSave()
     {
         // Arrange
         var cmd = new JoinWaitlistCommand("test@example.com");
@@ -131,8 +137,12 @@ public class JoinWaitlistHandlerTests
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
         // Assert
-        // Should still succeed even if email fails
-        Assert.True(result.IsSuccess);
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.Error);
+        Assert.Equal(ErrorCode.Validation, result.Error.Code);
+
+        _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static Mock<UserManager<UserEntity>> MockUserManager()
