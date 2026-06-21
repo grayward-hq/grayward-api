@@ -55,6 +55,7 @@ public class NucleiEngine implements Scanner {
                 "-silent",
                 "-omit-raw",
                 "-no-color",
+                "-duc", // skip automatic update check
                 "-o", outputFileName
         ));
 
