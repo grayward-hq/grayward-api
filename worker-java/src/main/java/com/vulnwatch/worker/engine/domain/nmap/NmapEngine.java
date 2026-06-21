@@ -64,7 +64,11 @@ public class NmapEngine implements Scanner {
             return EngineResult.success(SurfaceType.PORTS, Map.of("findings", findings));
         }catch (Exception e){
             log.error("Error performing %s scan for scan_id:%s, %s".formatted(job.scanType(), job.scanId(), e.getMessage()));
-            throw new RuntimeException(e.getCause());
+
+            if (e instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new RuntimeException(e);
         }finally {
             cliExecutor.deleteSilently(outFile);
         }
