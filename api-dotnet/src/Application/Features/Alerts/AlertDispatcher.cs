@@ -75,6 +75,11 @@ public class AlertDispatcher(
             "Handling ScanCompleted event — Domain: {DomainName}, ScanId: {ScanId}, UserId: {UserId}",
             e.DomainName, e.ScanId, e.UserId);
 
+        var appBaseUrl = _config["FrontendUrl:path"]
+            ?? _config["FrontendUrl:Verify"]?.Replace("/verify", "")
+            ?? throw new InvalidOperationException(
+                "FrontendUrl:path or FrontendUrl:Verify must be configured.");
+
         var channels = await ResolveChannelsAsync(e.DomainId, ct);
         var deduplicationKey = e.ScanId.ToString();
 
@@ -103,7 +108,7 @@ public class AlertDispatcher(
                 "Creating ScanCompleted alert — Domain: {DomainName}, Channel: {Channel}, Severity: {FindingSeverities}",
                 e.DomainName, channel, string.Join(",", e.FindingSeverities));
 
-            var alert = ScanCompletedAlertFactory.Create(e, channel);
+            var alert = ScanCompletedAlertFactory.Create(e, channel, appBaseUrl);
             await SaveAlertGuarded(alert, ct);
         }
     }
@@ -118,6 +123,10 @@ public class AlertDispatcher(
 
         var deduplicationKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
+        var appBaseUrl = _config["FrontendUrl:path"]
+            ?? _config["FrontendUrl:Verify"]?.Replace("/verify", "")
+            ?? throw new InvalidOperationException(
+                "FrontendUrl:path or FrontendUrl:Verify must be configured.");
 
         if (channels.Count == 0)
         {
@@ -140,7 +149,7 @@ public class AlertDispatcher(
                 continue;
             }
 
-            var alert = BrandThreatAlertFactory.Create(e, channel);
+            var alert = BrandThreatAlertFactory.Create(e, channel, appBaseUrl);
             await SaveAlertGuarded(alert, ct);
         }
     }
@@ -155,6 +164,10 @@ public class AlertDispatcher(
 
         var deduplicationKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
+        var appBaseUrl = _config["FrontendUrl:path"]
+            ?? _config["FrontendUrl:Verify"]?.Replace("/verify", "")
+            ?? throw new InvalidOperationException(
+                "FrontendUrl:path or FrontendUrl:Verify must be configured.");
 
         if (channels.Count == 0)
         {
@@ -177,7 +190,7 @@ public class AlertDispatcher(
                 continue;
             }
 
-            var alert = CredentialBreachAlertFactory.Create(e, channel);
+            var alert = CredentialBreachAlertFactory.Create(e, channel, appBaseUrl);
             await SaveAlertGuarded(alert, ct);
         }
     }

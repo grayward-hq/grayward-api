@@ -23,7 +23,8 @@ public static class DomainOwnershipWarningAlertFactory
                    deduplicationKey: $"ownership-{e.Stage}",
                    subject: BuildSubject(e),
                    body: BuildBody(e, config),
-                   domainId: e.DomainId);
+                   domainId: e.DomainId,
+                   summary: BuildSummary(e, config));
     }
 
     private static string BuildSubject(DomainOwnershipWarningEvent e) => e.Stage switch
@@ -352,4 +353,23 @@ public static class DomainOwnershipWarningAlertFactory
             </p>
             """);
     }
+
+  private static string BuildSummary(DomainOwnershipWarningEvent e, IConfiguration config)
+  {
+      var frontendBase = config["FrontendUrl:path"]
+          ?? config["FrontendUrl:Verify"]?.Replace("/verify", "")
+          ?? string.Empty;
+      var dashboardUrl = $"{frontendBase}/domain/{e.DomainId}";
+
+      return e.Stage switch
+      {
+          OwnershipWarningStage.Warning =>
+              $"Domain: *{e.DomainName}*\nOwnership TXT record not found. Monitoring will pause if not restored soon.\n<{dashboardUrl}|View domain>",
+          OwnershipWarningStage.MonitoringPaused =>
+              $"Domain: *{e.DomainName}*\nMonitoring paused — TXT record still missing.\n<{dashboardUrl}|View domain>",
+          OwnershipWarningStage.Revoked =>
+              $"Domain: *{e.DomainName}*\nDomain removed from monitoring — ownership could not be confirmed.\n<{dashboardUrl}|View domain>",
+          _ => $"Domain: *{e.DomainName}*\nOwnership check issue.\n<{dashboardUrl}|View domain>"
+      };
+  }
 }

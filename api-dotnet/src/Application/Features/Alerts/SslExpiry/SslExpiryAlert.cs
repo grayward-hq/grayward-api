@@ -25,7 +25,8 @@ public static class SslExpiryAlertFactory
         deduplicationKey: DateTime.UtcNow.ToString("yyyy-MM-dd"),
         subject: $"SSL certificate for {e.DomainName} expires in {e.DaysRemaining} days",
         body: BuildBody(e),
-        domainId: e.DomainId);
+        domainId: e.DomainId,
+        summary: BuildSummary(e));
   }
 
   private static string BuildBody(SslExpiryEvent e)
@@ -124,5 +125,13 @@ public static class SslExpiryAlertFactory
               Alerts are sent at 30, 14, and 7 days before expiry. To manage notification preferences, visit your account settings.
             </p>
             """);
+  }
+
+  private static string BuildSummary(SslExpiryEvent e)
+  {
+      return string.Join("\n",
+          $"Domain: *{e.DomainName}*",
+          $"Expires: {e.ExpiresAt:dddd, MMMM dd, yyyy} ({e.DaysRemaining} days remaining)",
+          "<https://letsencrypt.org/docs/renewal/|View renewal instructions>");
   }
 }

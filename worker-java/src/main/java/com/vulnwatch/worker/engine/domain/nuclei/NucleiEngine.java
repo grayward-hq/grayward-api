@@ -44,7 +44,7 @@ public class NucleiEngine implements Scanner {
     @Override
     public EngineResult scan(ScanJob job) {
         String domainName = job.domainName();
-        String outputFileName = "%s/%s-%s.jsonl".formatted(tempLocation,binary,job.scanId());
+        String outputFileName = "%s/nuclei-%s.jsonl".formatted(tempLocation,job.scanId());
         Path outFile = Path.of(outputFileName);
 
         List<String> command = new ArrayList<>(List.of(
