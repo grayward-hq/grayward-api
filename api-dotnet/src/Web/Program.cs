@@ -6,6 +6,7 @@ using Application.Features.BreachMonitoring;
 using Application.Features.Scans;
 using Application.Helpers;
 using Application.Interfaces;
+using Application.Options;
 using Application.Services;
 using DnsClient;
 using Domain.Entities;
@@ -210,6 +211,9 @@ builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IDomainRepository, DomainRepository>();
 builder.Services.AddScoped<IScanRepository, ScanRepository>();
+builder.Services.AddScoped<IMonitoredRepoRepository, MonitoredRepoRepository>();
+builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+builder.Services.AddScoped<IFindingRepository, FindingRepository>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<LookupClient>(_ =>
@@ -285,6 +289,15 @@ builder.Services.AddScoped<BrandProtectionCheckService>();
 builder.Services.AddScoped<LookAlikeDomainChecker>();
 builder.Services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
 builder.Services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
+builder.Services.Configure<GitHubAppOptions>(builder.Configuration.GetSection("GitHubApp"));
+builder.Services.AddSingleton<GitHubAppJwtFactory>();
+builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("VulnWatch");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+});
 
 QuestPDF.Settings.License = LicenseType.Community;
         
@@ -358,6 +371,7 @@ app.UseSwaggerUI(options =>
 app.UseHttpsRedirection();
 app.UseForwardedHeaders();
 app.UseCors("DefaultCors");
+app.UseMiddleware<ExceptionHandlingMiddleware>(); 
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<JwtMiddleware>();

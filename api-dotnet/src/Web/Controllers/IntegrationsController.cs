@@ -1,4 +1,6 @@
 using Application.Features.Auth.DTOs;
+using Application.Features.Integrations.GitHub;
+using Application.Features.Integrations.GitHub.DTOs;
 using Application.Features.Integrations.Slack;
 using Application.Features.Integrations.Slack.DTOs;
 using Domain.Common;
@@ -17,6 +19,15 @@ namespace Web.Controllers;
 public class IntegrationsController(IMediator mediator, IConfiguration config)
     : ControllerBase
 {
+
+    [HttpPost("github")]
+    public async Task<ActionResult<Result<MessageResponse>>> ConnectGithub([FromBody] ConnectGitHubRequest request, CancellationToken ct)
+    {
+        var command = new ConnectGitHubCommand(request.InstallationId, request.SetupAction);
+        var result = await mediator.Send(command, ct);
+        return result.ToHttpResponse(this);
+    }
+
     
     /// <summary>
     /// Retrieves the current Slack integration status for the authenticated user.

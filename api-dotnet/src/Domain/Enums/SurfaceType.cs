@@ -4,5 +4,6 @@ public enum SurfaceType
 {
     Dns,
     Ssl,
-    Http
+    Http,
+    SourceCode
 }

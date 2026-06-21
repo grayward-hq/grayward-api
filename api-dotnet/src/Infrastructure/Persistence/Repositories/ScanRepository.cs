@@ -18,6 +18,21 @@ public sealed class ScanRepository(VulnWatchDbContext db)
             .OrderByDescending(s => s.CompletedAt ?? s.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
+    public Task<Scan?> FindLatestForRepository(Guid repositoryId, CancellationToken ct) =>
+        Db.Scans
+            .AsNoTracking()
+            .Where(s => s.RepositoryId == repositoryId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public Task<Scan?> FindLatestCompletedForRepository(Guid repositoryId, CancellationToken ct) =>
+        Db.Scans
+            .AsNoTracking()
+            .Where(s => s.RepositoryId == repositoryId)
+            .OrderByDescending(s => s.CompletedAt)
+            .Include(s => s.Repository)
+            .FirstOrDefaultAsync(ct);
+
     public Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct) =>
         Db.Scans
             .Include(s => s.Domain)
@@ -85,6 +100,31 @@ public sealed class ScanRepository(VulnWatchDbContext db)
 
         return (items, totalCount);
     }
+
+    public Task<int> CountUserDomainScansInPeriod(Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+        Db.Scans.CountAsync(s => s.UserId == userId
+            && s.TargetType == ScanTargetType.Domain
+            && s.CreatedAt >= from && s.CreatedAt < to
+            && !(s.Status == ScanStatus.Failed), ct);
+
+    public Task<int> CountUserRepositoryScansInPeriod(Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+        Db.Scans.CountAsync(s => s.UserId == userId
+            && s.TargetType == ScanTargetType.Repository
+            && s.CreatedAt >= from && s.CreatedAt < to
+            && !(s.Status == ScanStatus.Failed), ct);
+
+    public Task<int> CountUserActiveDomainScans(Guid userId, CancellationToken ct) =>
+        Db.Scans.CountAsync(s => s.UserId == userId
+            && s.TargetType == ScanTargetType.Domain
+            && NonTerminalScanStatus.Contains(s.Status), ct);
+    
+    public Task<int> CountUserActiveRepositoryScans(Guid userId, CancellationToken ct) =>
+        Db.Scans.CountAsync(s => s.UserId == userId
+            && s.TargetType == ScanTargetType.Repository
+            && NonTerminalScanStatus.Contains(s.Status), ct);
+
+     private static readonly ScanStatus[] NonTerminalScanStatus =
+        { ScanStatus.Queued, ScanStatus.Running };
 
 }
 
