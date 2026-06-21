@@ -40,6 +40,8 @@ public class NmapEngine implements Scanner {
 
     @Value("${tools.temp:/Users/mitchelntuen/temp}")
     private String tempLocation;
+    
+    private static final String TARGET_PORTS = "22,25,445,3306,5432,6001-6003,8080";
 
     @Override
     public EngineResult scan(ScanJob job) {
@@ -50,6 +52,9 @@ public class NmapEngine implements Scanner {
         List<String> command = List.of(
                 binary,
                 "-oX", outputFileName,
+                "-p", TARGET_PORTS,
+                "-T4",
+                "-n",
                 domain
         );
 
