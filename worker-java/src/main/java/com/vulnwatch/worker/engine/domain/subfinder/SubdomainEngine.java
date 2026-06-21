@@ -47,6 +47,9 @@ public class SubdomainEngine implements Scanner {
                 binary,
                 "-d", domain,
                 "-json",
+                "-silent",
+                "-duc",
+                "-max-time", "2",
                 "-o", outputFileName
         );
 
