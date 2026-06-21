@@ -62,7 +62,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         }
 
         // Check if email already registered as user
-        var existingUser = await _userManager.FindByEmailAsync(cmd.Email);
+        var existingUser = await _userManager.FindByEmailAsync(normalizedEmail);
         if (existingUser is not null)
         {
             _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already registered.", cmd.Email);

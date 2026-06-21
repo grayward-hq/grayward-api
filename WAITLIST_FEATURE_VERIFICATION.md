@@ -91,6 +91,12 @@ dotnet test --filter "Waitlist"
   - [ ] Handle_CaseInsensitiveSearch passes
   - [ ] All status types return correct status passes
 
+- [ ] PromoteWaitlistHandlerTests
+  - [ ] Handle_WithConfirmedWaitlist_ConfirmsUserEmailAndSendsPasswordSetupInvite passes
+  - [ ] Handle_WithSendInvitationEmailFalse_ConfirmsUserEmailWithoutSendingPasswordSetupInvite passes
+  - [ ] Handle_WhenEmailConfirmationFails_RollsBackUserAndDoesNotPromote passes
+  - [ ] Handle_WhenInvitationEmailFails_RollsBackUserAndDoesNotPromote passes
+
 ## Integration Test Verification
 
 ### Endpoint: POST /api/waitlist/join
