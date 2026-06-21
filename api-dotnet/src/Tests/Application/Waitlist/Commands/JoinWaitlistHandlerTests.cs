@@ -44,13 +44,19 @@ public class JoinWaitlistHandlerTests
     public async Task Handle_WithValidEmail_CreatesWaitlistEntry()
     {
         // Arrange
-        var cmd = new JoinWaitlistCommand("test@example.com", "Test Company");
+        const string comments = "I want scheduled scans and Slack alerts.";
+        var cmd = new JoinWaitlistCommand("test@example.com", "Test Company", comments);
+        WaitlistEntity? addedEntry = null;
+
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((WaitlistEntity?)null);
         _mockUserManager.Setup(um => um.FindByEmailAsync(It.IsAny<string>()))
             .ReturnsAsync((UserEntity?)null);
         _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1L);
+        _mockWaitlistRepo.Setup(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<WaitlistEntity, CancellationToken>((entry, _) => addedEntry = entry)
+            .Returns(Task.CompletedTask);
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
 
@@ -64,6 +70,8 @@ public class JoinWaitlistHandlerTests
         Assert.Equal(1L, result.Value.Position);
         Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
         Assert.False(result.Value.EmailConfirmed);
+        Assert.NotNull(addedEntry);
+        Assert.Equal(comments, addedEntry!.Comments);
 
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);

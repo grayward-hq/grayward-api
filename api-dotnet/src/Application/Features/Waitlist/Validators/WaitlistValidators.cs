@@ -17,6 +17,11 @@ public class JoinWaitlistValidator : AbstractValidator<JoinWaitlistRequest>
             .MaximumLength(200)
             .When(x => !string.IsNullOrWhiteSpace(x.CompanyName))
             .WithMessage("Company name must not exceed 200 characters.");
+
+        RuleFor(x => x.Comments)
+            .MaximumLength(2000)
+            .When(x => !string.IsNullOrWhiteSpace(x.Comments))
+            .WithMessage("Comments must not exceed 2000 characters.");
     }
 }
 

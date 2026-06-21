@@ -60,6 +60,7 @@ public class GetWaitlistListHandler : IRequestHandler<GetWaitlistListQuery, Resu
             w.CreatedAt,
             w.EmailConfirmedAt,
             w.PromotedAt,
+            w.Comments,
             w.Notes)).ToList();
 
         var http = _http.HttpContext;

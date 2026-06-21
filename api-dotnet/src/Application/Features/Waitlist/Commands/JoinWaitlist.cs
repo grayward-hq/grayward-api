@@ -14,7 +14,7 @@ namespace Application.Features.Waitlist.Commands;
 
 using WaitlistEntity = global::Domain.Entities.Waitlist;
 
-public record JoinWaitlistCommand(string Email, string? CompanyName = null) 
+public record JoinWaitlistCommand(string Email, string? CompanyName = null, string? Comments = null) 
     : IRequest<Result<WaitlistResponse>>;
 
 public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<WaitlistResponse>>
@@ -73,7 +73,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         var position = await _waitlistRepo.GetNextPosition(ct);
 
         // Create waitlist entry in memory
-        var entry = WaitlistEntity.Create(normalizedEmail, cmd.CompanyName, position);
+        var entry = WaitlistEntity.Create(normalizedEmail, cmd.CompanyName, position, cmd.Comments);
 
         // Generate confirmation token
         var confirmationToken = GenerateToken();

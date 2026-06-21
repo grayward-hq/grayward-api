@@ -82,6 +82,7 @@ public class UpdateWaitlistHandler : IRequestHandler<UpdateWaitlistCommand, Resu
                 entry.CreatedAt,
                 entry.EmailConfirmedAt,
                 entry.PromotedAt,
+                entry.Comments,
                 entry.Notes));
     }
 }

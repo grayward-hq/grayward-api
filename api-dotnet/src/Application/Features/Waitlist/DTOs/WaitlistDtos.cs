@@ -2,7 +2,7 @@ using Domain.Enums;
 
 namespace Application.Features.Waitlist.DTOs;
 
-public record JoinWaitlistRequest(string Email, string? CompanyName = null);
+public record JoinWaitlistRequest(string Email, string? CompanyName = null, string? Comments = null);
 
 public record WaitlistResponse(
     string Email,
@@ -30,6 +30,7 @@ public record WaitlistListItemDto(
     DateTime CreatedAt,
     DateTime? EmailConfirmedAt,
     DateTime? PromotedAt,
+    string? Comments,
     string? Notes);
 
 public record WaitlistAnalyticsDto(

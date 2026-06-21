@@ -6,6 +6,7 @@ public class Waitlist : EntityBase
 {
     public string Email { get; private set; } = default!;
     public string? CompanyName { get; private set; }
+    public string? Comments { get; private set; }
     public WaitlistStatus Status { get; private set; } = WaitlistStatus.Pending;
     public long Position { get; private set; }
     public bool EmailConfirmed { get; private set; }
@@ -18,11 +19,12 @@ public class Waitlist : EntityBase
 
     private Waitlist() { }
 
-    public static Waitlist Create(string email, string? companyName = null, long position = 0)
+    public static Waitlist Create(string email, string? companyName = null, long position = 0, string? comments = null)
         => new()
         {
             Email = email,
             CompanyName = companyName,
+            Comments = comments,
             Status = WaitlistStatus.Pending,
             Position = position,
             EmailConfirmed = false,

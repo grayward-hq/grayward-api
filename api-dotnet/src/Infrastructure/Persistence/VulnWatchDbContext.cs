@@ -377,6 +377,10 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .HasMaxLength(200)
                 .IsRequired(false);
 
+            e.Property(w => w.Comments)
+                .HasMaxLength(2000)
+                .IsRequired(false);
+
             e.Property(w => w.Status)
                 .HasConversion<string>()
                 .HasMaxLength(50)

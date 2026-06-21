@@ -801,19 +801,77 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("CompanyName")
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Comments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("EmailConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmailConfirmationToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("InvitationToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<long>("Position")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PromotedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Pending");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Waitlists_CreatedAt");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_Email");
+
+                    b.HasIndex("Position")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_Position");
+
+                    b.HasIndex("PromotedUserId")
+                        .HasDatabaseName("IX_Waitlists_PromotedUserId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Waitlists_Status");
 
                     b.ToTable("Waitlists");
                 });

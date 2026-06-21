@@ -29,7 +29,7 @@ public class WaitlistController : ControllerBase
     /// <summary>
     /// Join the Vulnwatch waitlist.
     /// </summary>
-    /// <param name="request">Email and optional company name.</param>
+    /// <param name="request">Email, optional company name, and optional comments.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Successfully added to waitlist.</response>
     /// <response code="400">Validation error.</response>
@@ -42,7 +42,7 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new JoinWaitlistCommand(request.Email, request.CompanyName), ct);
+            new JoinWaitlistCommand(request.Email, request.CompanyName, request.Comments), ct);
         return result.ToHttpResponse(this);
     }
 
