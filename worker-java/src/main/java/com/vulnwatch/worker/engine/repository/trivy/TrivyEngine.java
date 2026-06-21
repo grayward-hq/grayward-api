@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class TrivyEngine implements Scanner {
     private final CliExecutor cliExecutor;
