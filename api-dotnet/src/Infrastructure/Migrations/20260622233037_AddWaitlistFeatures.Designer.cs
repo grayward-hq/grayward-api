@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(VulnWatchDbContext))]
-    [Migration("20260622215533_AddWaitlistComments")]
-    partial class AddWaitlistComments
+    [Migration("20260622233037_AddWaitlistFeatures")]
+    partial class AddWaitlistFeatures
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

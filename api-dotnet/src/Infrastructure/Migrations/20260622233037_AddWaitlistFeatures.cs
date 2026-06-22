@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,19 +11,45 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AlterColumn<string>(
+                name: "Email",
+                table: "Waitlists",
+                type: "character varying(254)",
+                maxLength: 254,
+                nullable: false,
+                oldClrType: typeof(string),
+                oldType: "text");
+
+            migrationBuilder.AlterColumn<string>(
+                name: "CompanyName",
+                table: "Waitlists",
+                type: "character varying(200)",
+                maxLength: 200,
+                nullable: true,
+                oldClrType: typeof(string),
+                oldType: "text",
+                oldNullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Comments",
+                table: "Waitlists",
+                type: "character varying(2000)",
+                maxLength: 2000,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "EmailConfirmationToken",
+                table: "Waitlists",
+                type: "character varying(500)",
+                maxLength: 500,
+                nullable: true);
+
             migrationBuilder.AddColumn<bool>(
                 name: "EmailConfirmed",
                 table: "Waitlists",
                 type: "boolean",
                 nullable: false,
                 defaultValue: false);
-
-            migrationBuilder.AddColumn<string>(
-                name: "EmailConfirmationToken",
-                table: "Waitlists",
-                type: "text",
-                maxLength: 500,
-                nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "EmailConfirmedAt",
@@ -34,7 +60,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "InvitationToken",
                 table: "Waitlists",
-                type: "text",
+                type: "character varying(500)",
                 maxLength: 500,
                 nullable: true);
 
@@ -123,11 +149,15 @@ namespace Infrastructure.Migrations
                 table: "Waitlists");
 
             migrationBuilder.DropColumn(
-                name: "EmailConfirmed",
+                name: "Comments",
                 table: "Waitlists");
 
             migrationBuilder.DropColumn(
                 name: "EmailConfirmationToken",
+                table: "Waitlists");
+
+            migrationBuilder.DropColumn(
+                name: "EmailConfirmed",
                 table: "Waitlists");
 
             migrationBuilder.DropColumn(
@@ -157,6 +187,25 @@ namespace Infrastructure.Migrations
             migrationBuilder.DropColumn(
                 name: "Status",
                 table: "Waitlists");
+
+            migrationBuilder.AlterColumn<string>(
+                name: "Email",
+                table: "Waitlists",
+                type: "text",
+                nullable: false,
+                oldClrType: typeof(string),
+                oldType: "character varying(254)",
+                oldMaxLength: 254);
+
+            migrationBuilder.AlterColumn<string>(
+                name: "CompanyName",
+                table: "Waitlists",
+                type: "text",
+                nullable: true,
+                oldClrType: typeof(string),
+                oldType: "character varying(200)",
+                oldMaxLength: 200,
+                oldNullable: true);
         }
     }
 }
