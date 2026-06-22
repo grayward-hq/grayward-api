@@ -28,7 +28,8 @@ public class GetReposRequest
 
     public bool IsValid(out string? error)
     {
-        if (PageSize > 50) { error = "Invalid query parameters"; return false; }
+        if (Page < 1) { error = "Invalid query parameters"; return false; }  
+        if (PageSize < 1 || PageSize > 50) { error = "Invalid query parameters"; return false; }
         if (!ValidSortFields.Contains(SortBy)) { error = "Invalid query parameters"; return false; }
         if (Order is not "asc" and not "desc") { error = "Invalid query parameters"; return false; }
         error = null;

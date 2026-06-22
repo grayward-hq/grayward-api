@@ -20,6 +20,12 @@ public class GetRepoDetailHandler(
 {
     public async Task<Result<RepoDetailDto>> Handle(GetRepoDetailQuery q, CancellationToken ct)
     {
+        if (q.TrendDays <= 0)
+        {
+            return Result<RepoDetailDto>.Failure(
+                Error.Validation("TrendDays must be greater than zero."));
+        }
+
         var userId = currentUser.UserId;
 
         var repo = await repos.GetUserRepoByRepoId(userId, q.RepositoryId, ct);
@@ -32,7 +38,7 @@ public class GetRepoDetailHandler(
 
         var since = DateTime.UtcNow.Date.AddDays(-q.TrendDays + 1);
 
-        List<Finding> vulns = [];
+        List<VulnerabilityListItemDto> vulns = [];
         List<SeverityCountDto> openBySeverity = [];
         List<TrendPointDto> trend;
 
@@ -50,7 +56,7 @@ public class GetRepoDetailHandler(
                 .OrderByDescending(s => s.Severity)
                 .ToList();
 
-            var trendRows = await findings.GetTrendRowsByRepository(latestCompleted.Id, since, ct);
+            var trendRows = await findings.GetTrendRowsByRepository(repo.Id, since, ct);
             trend = BuildTrend(trendRows.Select(r => (r.Severity, r.Day)), since, q.TrendDays);
         }
 
@@ -74,7 +80,7 @@ public class GetRepoDetailHandler(
 
     private static RepoSettingsDto RepoSettingsDto_Default() => new(
         false, ScanFrequency.Daily, false, RepositoryEventTrigger.None,
-        AlertChannel.Email, null, null, string.Empty);
+        AlertChannel.Email, null, null, "0");
 
     // zero-fills every day in the window so the chart has no gaps
     private static List<TrendPointDto> BuildTrend(

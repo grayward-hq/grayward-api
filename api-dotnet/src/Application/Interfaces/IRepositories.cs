@@ -84,7 +84,7 @@ public interface IDomainSettingsRepository
 public interface IFindingRepository
     : IRepository<Finding>
 {
-    Task<List<Finding>> GetByScanId(Guid scanId, CancellationToken ct);
+    Task<List<VulnerabilityListItemDto>> GetByScanId(Guid scanId, CancellationToken ct);
     Task<List<TrendRowDto>> GetTrendRowsByRepository(
     Guid repositoryId,
     DateTime since,
@@ -144,6 +144,7 @@ public interface IScanRepository : IRepository<Scan>
     Task<Scan?> FindLatestCompletedForRepository(Guid repositoryId, CancellationToken ct);
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
+    Task<Scan?> FindRunningByRepoid(Guid repoId, CancellationToken ct);
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
     Task<List<ScanScoreDto>> GetRecentCompletedScans(
         Guid userId,
@@ -158,6 +159,7 @@ public interface IScanRepository : IRepository<Scan>
 
 public interface ISubscriptionRepository : IRepository<Subscription>
 {
+    Task<Subscription?> GetActiveByUserForUpdate(Guid userId, CancellationToken ct);
     Task<Subscription?> GetActiveByUser(Guid userId, CancellationToken ct);
 }
 

@@ -13,5 +13,5 @@ public record RepoDetailDto(
     ScanStatus? LatestScanStatus,
     DateTime? LastScanAt,  
     IReadOnlyList<SeverityCountDto> OpenBySeverity,
-    IReadOnlyList<Finding> Vulnerabilities,
+    IReadOnlyList<VulnerabilityListItemDto> Vulnerabilities,
     IReadOnlyList<TrendPointDto> Trend);    

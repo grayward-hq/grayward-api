@@ -62,5 +62,11 @@ public sealed class PlanCatalog : IPlanCatalog
             }),
     };
 
-    public Plan Get(PlanCode code) => Plans[code];
+    public Plan Get(PlanCode code)
+    {
+        if (Plans.TryGetValue(code, out var plan))
+            return plan;
+
+        throw new InvalidOperationException($"Unsupported plan code: {code}");
+    }
 }

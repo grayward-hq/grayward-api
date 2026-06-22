@@ -22,7 +22,7 @@ public class GitHubAppClient : IGitHubAppClient
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, $"app/installations/{installationId}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _jwt.CreateJwt());
-        var res = await _http.SendAsync(req, ct);
+        using var res = await _http.SendAsync(req, ct);  
         if (res.StatusCode == HttpStatusCode.NotFound) return null;
         res.EnsureSuccessStatusCode();
         return await res.Content.ReadFromJsonAsync<InstallationDto>(cancellationToken: ct);
@@ -32,7 +32,7 @@ public class GitHubAppClient : IGitHubAppClient
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, $"app/installations/{installationId}/access_tokens");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _jwt.CreateJwt());
-        var res = await _http.SendAsync(req, ct);
+        using var res = await _http.SendAsync(req, ct); 
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<InstallationTokenDto>(cancellationToken: ct))!;
     }
@@ -44,7 +44,7 @@ public class GitHubAppClient : IGitHubAppClient
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"installation/repositories?per_page=100&page={page}");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", installationToken);
-            var res = await _http.SendAsync(req, ct);
+            using var res = await _http.SendAsync(req, ct); 
             res.EnsureSuccessStatusCode();
             var payload = await res.Content.ReadFromJsonAsync<InstallationRepositoriesDto>(cancellationToken: ct);
             if (payload?.Repositories is null or { Count: 0 }) break;

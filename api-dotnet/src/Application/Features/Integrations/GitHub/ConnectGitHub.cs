@@ -89,9 +89,13 @@ public class ConnectGitHubHandler(
 
             await tx.CommitAsync(ct);                   // single commit point
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)  
+        {  
+            throw;  
+        }
         catch (Exception ex)
         {
-            logger.LogInformation("Error connecting GitHub returned: {ex}", ex);
+            logger.LogError(ex, "Error connecting GitHub.");
             await tx.RollbackAsync(ct);
             return Result<MessageResponse>.Failure(
                 Error.Internal("Failed to connect GitHub. No changes were saved."));

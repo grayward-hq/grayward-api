@@ -1,4 +1,5 @@
 using Application.Behaviours;
+using Application.Catalogs;
 using Application.Features.Alerts;
 using Application.Features.Alerts.SslExpiry;
 using Application.Features.Auth;
@@ -6,6 +7,7 @@ using Application.Features.BreachMonitoring;
 using Application.Features.Scans;
 using Application.Helpers;
 using Application.Interfaces;
+using Application.Mappers;
 using Application.Options;
 using Application.Services;
 using DnsClient;
@@ -263,13 +265,16 @@ builder.Services.AddScoped<OpenAiChatService>();
 builder.Services.AddScoped<IChatServiceFactory, ChatServiceFactory>();
 builder.Services.AddScoped<IChatService>(sp =>
         sp.GetRequiredService<IChatServiceFactory>().Resolve());
-
 builder.Services.AddHttpClient("slack");
 builder.Services.AddScoped<ISlackService, SlackService>();
+builder.Services.AddSingleton<IPlanCatalog, PlanCatalog>();
+builder.Services.AddScoped<IQuotaService, QuotaService>();
+builder.Services.AddScoped<IScanJobFactory, ScanJobFactory>();
 builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
 builder.Services.AddDataProtection()
         .PersistKeysToDbContext<VulnWatchDbContext>()
         .SetApplicationName("VulnWatch");
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddHostedService<DomainVerificationReaper>();
 builder.Services.AddScoped<OwaspEvaluationEngine>();
 builder.Services.AddHttpClient("BrandProtection", client =>

@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(VulnWatchDbContext))]
-    [Migration("20260621193306_AddMonitoredRepositoryAndSettings")]
+    [Migration("20260622154617_AddMonitoredRepositoryAndSettings")]
     partial class AddMonitoredRepositoryAndSettings
     {
         /// <inheritdoc />

@@ -20,11 +20,18 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         }
         catch (AppException ex)
         {
+            if (context.Response.HasStarted)  
+            {  
+                logger.LogWarning("Cannot write AppException response because the response already started for {Path}", context.Request.Path);  
+                throw;  
+            } 
             await Write(context, ex.Error, ex.Error.Code.ToStatusCode());
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception for {Path}", context.Request.Path);
+            if (context.Response.HasStarted)  
+                throw;
             // Don't leak internals — generic 500, same as Result.Internal
             await Write(context, Error.Internal("An unexpected error occurred."),
                 StatusCodes.Status500InternalServerError);

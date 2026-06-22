@@ -15,14 +15,13 @@ using Web.Extensions;
 namespace Web.Controllers;
 
 [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
-[AllowAnonymous]               
+[Authorize]               
 [ApiController]
 [Route("api/[controller]")]
 public class RepositoriesController(IMediator mediator)
     : ControllerBase
 {
     [HttpGet]
-    [Authorize]
     public async Task<ActionResult<Result<PagedResult<RepoSummary>>>> GetUserDomains([FromQuery] GetReposRequest request, CancellationToken ct)
     {
 

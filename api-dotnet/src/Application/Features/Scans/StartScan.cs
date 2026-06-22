@@ -11,9 +11,17 @@ using Microsoft.Extensions.Configuration;
 
 namespace Application.Features.Scans;
 
-public record StartScanCommand(string Domain, ScanCoverage Coverage, SurfaceType SurfaceTypes, Guid IdempotencyKey) : IRequest<Result<StartScanResponse>>;
+// public record StartScanCommand(string Domain, ScanCoverage Coverage, SurfaceType SurfaceTypes, Guid IdempotencyKey) : IRequest<Result<StartScanResponse>>;
+public record StartScanCommand(
+    Guid TargetId,
+    ScanTargetType TargetType,
+    ScanCoverage Coverage,
+    SurfaceType SurfaceTypes,
+    Guid IdempotencyKey
+) : IRequest<Result<StartScanResponse>>;
 
-public record StartScanRequest(string Domain, SurfaceType SurfaceTypes, ScanCoverage Coverage);
+public record StartScanRequest(Guid Target, ScanTargetType TargetType, ScanCoverage Coverage,
+    SurfaceType SurfaceTypes);
 
 public record StartScanResponse(Guid ScanId, ScanStatus Status, string Message);
 
@@ -21,102 +29,127 @@ public class StartScanCommandValidator : AbstractValidator<StartScanCommand>
 {
     public StartScanCommandValidator()
     {
-        RuleFor(x => x.Domain)
-            .NotEmpty()
-            .MaximumLength(253)
-            .Matches(@"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$")
-            .WithMessage("Invalid domain format.");
+        RuleFor(x => x.TargetId)
+            .NotEqual(Guid.Empty)
+            .WithMessage("A valid domain or repository ID is required.");
+
+        RuleFor(x => x.TargetType)
+            .IsInEnum();
+
+        RuleFor(x => x.Coverage)
+            .IsInEnum();
+
+        RuleFor(x => x.SurfaceTypes)
+            .Must(surfaceTypes => surfaceTypes != 0)
+            .WithMessage("At least one surface type must be specified.");
 
         RuleFor(x => x.IdempotencyKey)
             .NotEqual(Guid.Empty)
             .WithMessage("A valid idempotency key is required.");
-
-        RuleFor(x => x.Coverage)
-            .IsInEnum();
     }
 }
-public class StartScanHandler : IRequestHandler<StartScanCommand, Result<StartScanResponse>>
+public class StartScanHandler(
+    ICurrentUser currentUser,
+    IScanRepository scans,
+    IDomainRepository domains,
+    IMonitoredRepoRepository repos,
+    IRedisService redis,
+    IQuotaService quota,
+    IScanJobFactory scanJobFactory,
+    IConfiguration config,
+    ILogger<StartScanHandler> logger)
+    : IRequestHandler<StartScanCommand, Result<StartScanResponse>>
 {
-    private readonly IVulnWatchDbContext _context;
-    private readonly ICurrentUser _currentUser;
-    private readonly IScanRepository _scanRepo;
-    private readonly IDomainRepository _domainRepo;
-    private readonly IRedisService _redis;
-    private readonly ILogger<StartScanHandler> _logger;
-    private readonly string _scanJobsQueue;
-
-    public StartScanHandler(IVulnWatchDbContext context, ICurrentUser currentUser, IScanRepository scanRepo, IDomainRepository domainRepo, IRedisService redis, ILogger<StartScanHandler> logger, IConfiguration config)
-    {
-        _context = context;
-        _currentUser = currentUser;
-        _scanRepo = scanRepo;
-        _domainRepo = domainRepo;
-        _redis = redis;
-        _logger = logger;
-        _scanJobsQueue = config["Worker:ScanJobsQueue"] ?? "scan-jobs";
-    }
+    private readonly string _scanJobsQueue =
+        config["Worker:ScanJobsQueue"] ?? "scan-jobs";
 
     public async Task<Result<StartScanResponse>> Handle(StartScanCommand cmd, CancellationToken ct)
     {
-        var userId = _currentUser.UserId;
+        var userId = currentUser.UserId;
 
-        var domain = await _domainRepo.FindUserDomainByName(userId, cmd.Domain, ct);
-
-        if (domain is null)
-            return Result<StartScanResponse>.Failure(Error.NotFound("Domain not found."));
-
-        if (domain.VerificationStatus != VerificationStatus.Verified)
-            return Result<StartScanResponse>.Failure(Error.Forbidden("Domain ownership unverified! Verify before initiating a scan."));
-
-        // Idempotency check — same request retried or double-submitted
-        var existingByKey = await _scanRepo.FindByIdempotencyKey(cmd.IdempotencyKey, ct);
+        var existingByKey = await scans.FindByIdempotencyKey(cmd.IdempotencyKey, ct);
         if (existingByKey is not null)
             return Result<StartScanResponse>.Success(
                 new StartScanResponse(existingByKey.Id, existingByKey.Status, "Scan already initiated."));
 
-        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        Guid? domainId = null;
+        Guid? repositoryId = null;
 
-        try
+        switch (cmd.TargetType)
         {
-            // Concurrency check — different request but scan already running on this domain
-            var running = await _scanRepo.FindRunningByDomain(domain.Id, ct);
-            if (running is not null)
-            {
-                await tx.RollbackAsync(ct);
-                return Result<StartScanResponse>.Success(
-                    new StartScanResponse(running.Id, running.Status, "A scan is already in progress for this domain."));
-            }
+            case ScanTargetType.Domain:
+                var domain = await domains.FindUserDomainById(userId, cmd.TargetId, ct);
 
-            var scan = Scan.Create(
-                userId,
-                idempotencyKey: cmd.IdempotencyKey,
-                ScanTargetType.Domain,
-                cmd.Coverage,
-                cmd.SurfaceTypes,
-                domain.Id,
-                null
-            );
+                if (domain is null)
+                    return Result<StartScanResponse>.Failure(Error.NotFound("Domain not found."));
 
-            await _scanRepo.AddAsync(scan, ct);
-            await _scanRepo.SaveChangesAsync(ct);
+                if (domain.VerificationStatus != VerificationStatus.Verified)
+                    return Result<StartScanResponse>.Failure(Error.Forbidden("Domain ownership unverified! Verify before initiating a scan."));
 
-            await tx.CommitAsync(ct);
+                var runningDomainScan = await scans.FindRunningByDomain(domain.Id, ct);
+                if (runningDomainScan is not null)
+                {
+                    return Result<StartScanResponse>.Success(
+                        new StartScanResponse(runningDomainScan.Id, runningDomainScan.Status, "A scan is already in progress for this domain."));
+                }
 
-            // Publish after commit — worker only sees jobs backed by a committed row
-            await _redis.PublishScanJob(_scanJobsQueue, new ScanJob(
-                domain.Id, domain.DomainName, scan.Id,
-                ScanTargetType.Domain.ToString(), scan.SurfaceTypes.ToString(),  userId, scan.CreatedAt), ct);
+                domainId = domain.Id;
 
-            _logger.LogInformation("Scan {ScanId} queued for domain {DomainId}", scan.Id, domain.Id);
+                break;
 
-            return Result<StartScanResponse>.Success(
-                new StartScanResponse(scan.Id, scan.Status, "Scan started successfully."));
+            case ScanTargetType.Repository:
+                var repository = await repos.GetUserRepoByRepoId(userId, cmd.TargetId, ct);
+
+                if (repository is null)
+                    return Result<StartScanResponse>.Failure(Error.NotFound("Repository not found."));
+
+                if (repository.Status != RepositoryStatus.Active)
+                    return Result<StartScanResponse>.Failure(Error.Forbidden("Repository is not active."));
+
+                var runningRepoScan = await scans.FindRunningByRepoid(repository.Id, ct);
+                if (runningRepoScan is not null)
+                {
+                    return Result<StartScanResponse>.Success(
+                        new StartScanResponse(runningRepoScan.Id, runningRepoScan.Status, "A scan is already in progress for this domain."));
+                }
+
+                repositoryId = repository.Id;
+
+                break;
+            
+            default:
+                return Result<StartScanResponse>.Failure(
+                    Error.Validation("Invalid target type."));
         }
-        catch (Exception ex)
-        {
-            // await tx.RollbackAsync(ct);
-            _logger.LogError(ex, "Failed to start scan for domain {DomainId}", domain.Id);
-            return Result<StartScanResponse>.Failure(Error.Internal("Failed to start scan. Please try again."));
-        }
+
+        var scan = Scan.Create(
+            userId,
+            cmd.IdempotencyKey,
+            cmd.TargetType,
+            cmd.Coverage,
+            cmd.SurfaceTypes,
+            domainId,
+            repositoryId
+        );
+
+        var reserved = await quota.ReserveScanSlot(
+            userId,
+            cmd.TargetType == ScanTargetType.Domain
+                ? ResourceKind.Domain
+                : ResourceKind.Repository,
+            scan, ct);
+
+        if (!reserved.IsSuccess || reserved.Value is null)
+            return Result<StartScanResponse>.Failure(reserved.Error!);
+
+        var scanJob = scanJobFactory.Create(reserved.Value);
+
+        await redis.PublishScanJob(_scanJobsQueue, scanJob, ct);
+
+        logger.LogInformation("Scan {ScanId} queued for {Target} {Id}", scan.Id, cmd.TargetType, cmd.TargetId);
+
+        return Result<StartScanResponse>.Success(
+            new StartScanResponse(scan.Id, scan.Status, "Scan started successfully."));
+
     }
 }

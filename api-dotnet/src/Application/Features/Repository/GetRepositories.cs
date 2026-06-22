@@ -38,8 +38,8 @@ public class GetRepositoriesHandler(
             Status: query.Status,
             SortBy: query.SortBy.ToLowerInvariant(),
             Order: query.Order.ToLowerInvariant(),
-            Page: query.Page,
-            PageSize: Math.Min(query.PageSize, 50));
+            Page: Math.Max(query.Page, 1),  
+            PageSize: Math.Clamp(query.PageSize, 1, 50));  
 
         var (items, totalCount) = await repos.GetPaged(filter, ct);
 

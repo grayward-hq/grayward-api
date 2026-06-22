@@ -13,7 +13,7 @@ using Web.Extensions;
 namespace Web.Controllers;
 
 [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
-[AllowAnonymous]               
+[Authorize]               
 [ApiController]
 [Route("api/[controller]")]
 public class IntegrationsController(IMediator mediator, IConfiguration config)
@@ -21,6 +21,7 @@ public class IntegrationsController(IMediator mediator, IConfiguration config)
 {
 
     [HttpPost("github")]
+    [Authorize]
     public async Task<ActionResult<Result<MessageResponse>>> ConnectGithub([FromBody] ConnectGitHubRequest request, CancellationToken ct)
     {
         var command = new ConnectGitHubCommand(request.InstallationId, request.SetupAction);

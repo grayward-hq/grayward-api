@@ -12,19 +12,29 @@ namespace Infrastructure.Persistence.Repositories;
 public sealed class FindingRepository(VulnWatchDbContext db)
     : BaseRepository<Finding>(db), IFindingRepository
 {
-    public Task<List<Finding>> GetByScanId(Guid scanId, CancellationToken ct) =>
+    public Task<List<VulnerabilityListItemDto>> GetByScanId(Guid scanId, CancellationToken ct) =>
         Db.Findings
         .AsNoTracking()
             .Where(f => f.ScanId == scanId)
+            .Select(f => new VulnerabilityListItemDto(
+                f.Id,
+                f.Title,
+                f.Severity,
+                f.AiExplanation,
+                f.CveId,
+                f.Status,
+                f.CreatedAt))
             .ToListAsync(ct);
     public Task<List<TrendRowDto>> GetTrendRowsByRepository(
-        Guid scanId,
+        Guid repositoryId,
         DateTime since,
         CancellationToken ct)
     {
         return Db.Findings
             .AsNoTracking()
-            .Where(f => f.ScanId == scanId && f.CreatedAt >= since)
+            .Where(f => f.Scan.RepositoryId == repositoryId && 
+             f.Scan.Status == ScanStatus.Completed &&
+             f.CreatedAt >= since)
             .Select(f => new TrendRowDto(
                 f.Severity,
                 f.CreatedAt.Date))

@@ -28,7 +28,7 @@ public sealed class ScanRepository(VulnWatchDbContext db)
     public Task<Scan?> FindLatestCompletedForRepository(Guid repositoryId, CancellationToken ct) =>
         Db.Scans
             .AsNoTracking()
-            .Where(s => s.RepositoryId == repositoryId)
+            .Where(s => s.RepositoryId == repositoryId && s.Status == ScanStatus.Completed)
             .OrderByDescending(s => s.CompletedAt)
             .Include(s => s.Repository)
             .FirstOrDefaultAsync(ct);
@@ -42,6 +42,12 @@ public sealed class ScanRepository(VulnWatchDbContext db)
         Db.Scans
             .FirstOrDefaultAsync(s =>
                 s.DomainId == domainId &&
+                (s.Status == ScanStatus.Queued || s.Status == ScanStatus.Running), ct);
+
+    public Task<Scan?> FindRunningByRepoid(Guid repoId, CancellationToken ct) =>
+        Db.Scans
+            .FirstOrDefaultAsync(s =>
+                s.RepositoryId == repoId &&
                 (s.Status == ScanStatus.Queued || s.Status == ScanStatus.Running), ct);
 
     public Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct) =>

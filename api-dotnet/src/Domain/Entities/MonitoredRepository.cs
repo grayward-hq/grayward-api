@@ -9,9 +9,9 @@ public class MonitoredRepository : EntityBase
     public string FullName { get; private set; } = default!;
     public string CloneUrl { get; private set; } = default!;
     public string DefaultBranch { get; private set; } = default!;
-    public bool IsPrivate { get; private set; }
+    public bool IsPrivate { get; private set; } = false;
     public string InstallationId { get; private set; } = default!;  
-    public RepositoryStatus Status { get; private set; }
+    public RepositoryStatus Status { get; private set; } = RepositoryStatus.PendingVerification;
     public DateTimeOffset? LastScanCompletedAt { get; private set; }
     public RepositorySetting Settings { get; private set; } = null!;
     public User User { get; private set; } = default!;

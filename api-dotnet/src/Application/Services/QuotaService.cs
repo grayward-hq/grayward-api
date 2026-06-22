@@ -1,6 +1,7 @@
 
 using Application.Interfaces;
 using Domain.Common;
+using Domain.Entities;
 using Domain.Enums;
 
 namespace Application.Services;
@@ -10,7 +11,8 @@ public class QuotaService(
         IMonitoredRepoRepository repos,
         IDomainRepository domains,
         IScanRepository scans,
-        IPlanCatalog plans) : IQuotaService
+        IPlanCatalog plans,
+        IUnitOfWork uow) : IQuotaService
 {
     public async Task EnsureCanOnboard(Guid userId, ResourceKind kind, CancellationToken ct)
     {
@@ -37,54 +39,28 @@ public class QuotaService(
 
     }
 
-    public async Task EnsureCanStartScan(
-        Guid userId,
-        ResourceKind kind,
-        CancellationToken ct)
+    public Task<Result<Scan>> ReserveScanSlot(Guid userId, ResourceKind kind, Scan scan, CancellationToken ct)
+    => uow.InTransaction(async token =>
     {
-        var subscription = await subs.GetActiveByUser(userId, ct)
-            ?? throw new ForbiddenException("No active subscription found.");
+        var subscription = await subs.GetActiveByUserForUpdate(userId, token);
+        if (subscription is null)
+            return Result<Scan>.Failure(Error.Forbidden("No active subscription."));
+
 
         var limits = plans.Get(subscription.Plan).For(kind);
 
-        var now = DateTimeOffset.UtcNow;
-        var startOfMonth = new DateTimeOffset(
-            now.Year,
-            now.Month,
-            1,
-            0, 0, 0,
-            TimeSpan.Zero);
-
-        var scansThisMonth = kind == ResourceKind.Repository
-            ? await scans.CountUserRepositoryScansInPeriod(
-                userId,
-                startOfMonth,
-                now,
-                ct)
-            : await scans.CountUserDomainScansInPeriod(
-                userId,
-                startOfMonth,
-                now,
-                ct);
-
-        if (scansThisMonth >= limits.MaxScansPerMonth)
-        {
-            throw new QuotaExceededException(
-                QuotaKind.MonthlyScans,
-                kind,
-                limits.MaxScansPerMonth);
-        }
-
         var activeScans = kind == ResourceKind.Repository
-            ? await scans.CountUserActiveRepositoryScans(userId, ct)
-            : await scans.CountUserActiveDomainScans(userId, ct);
+            ? await scans.CountUserActiveRepositoryScans(userId, token)
+            : await scans.CountUserActiveDomainScans(userId, token);
 
         if (activeScans >= limits.MaxConcurrentScans)
-        {
-            throw new QuotaExceededException(
-                QuotaKind.ConcurrentScans,
-                kind,
-                limits.MaxConcurrentScans);
-        }
-    }
+            return Result<Scan>.Failure(
+                Error.RateLimited($"Concurrent scan limit reached ({limits.MaxConcurrentScans})."));
+
+        await scans.AddAsync(scan, token);
+        await uow.SaveChanges(token);
+
+        return Result<Scan>.Success(scan);
+    }, ct);
+
 }
