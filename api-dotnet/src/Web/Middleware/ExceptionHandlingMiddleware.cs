@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Domain.Common;
+using Web.Extensions;
 
 namespace Web.Middleware;
 
