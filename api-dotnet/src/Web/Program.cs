@@ -296,7 +296,8 @@ builder.Services.AddScoped<BrandProtectionCheckService>();
 builder.Services.AddScoped<LookAlikeDomainChecker>();
 builder.Services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
 builder.Services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
-builder.Services.Configure<GitHubAppOptions>(builder.Configuration.GetSection("GitHubApp"));
+builder.Services.Configure<GitHubAppOptions>(
+    builder.Configuration.GetSection(GitHubAppOptions.Section));
 builder.Services.AddSingleton<GitHubAppJwtFactory>();
 builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
 {
