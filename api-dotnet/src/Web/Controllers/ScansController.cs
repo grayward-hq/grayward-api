@@ -43,7 +43,7 @@ public class ScansController : ControllerBase
         [FromHeader(Name = "Idempotency-Key")] Guid idempotencyKey,
         [FromBody] StartScanRequest body)
     {
-        var command = new StartScanCommand(body.Domain, body.Coverage, body.SurfaceTypes, idempotencyKey);
+        var command = new StartScanCommand(body.Target, body.TargetType, body.Coverage, body.SurfaceTypes, idempotencyKey);
         var result = await _mediator.Send(command);
         return result.ToHttpResponse(this);
     }

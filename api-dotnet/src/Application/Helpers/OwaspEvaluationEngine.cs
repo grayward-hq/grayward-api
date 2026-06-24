@@ -81,7 +81,7 @@ public class OwaspEvaluationEngine
         {
             if (finding.HttpHeaders is { } h)
             {
-                if (h.MissingHeaders.Any())
+                if (h.MissingHeaders?.Any() == true)
                     details.Add($"Missing headers: {string.Join(", ", h.MissingHeaders)}");
                 if (h.ExposedTechnology != null)
                     details.Add($"Exposed technology: {h.ExposedTechnology}");

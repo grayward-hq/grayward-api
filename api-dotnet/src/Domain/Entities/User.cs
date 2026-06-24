@@ -10,6 +10,8 @@ public class User : IdentityUser<Guid>
     public string? ProfilePictureUrl { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
+    public ICollection<Subscription> Subscriptions { get; private set; } = new List<Subscription>();
+
  
     public static User Create(string email, string? firstName = null, string? lastName = null) => new()
     {

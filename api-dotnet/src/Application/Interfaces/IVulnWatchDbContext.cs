@@ -10,8 +10,12 @@ public interface IVulnWatchDbContext
     DbSet<DomainSettings> DomainSettings { get; }
     DbSet<Scan> Scans { get; }
     DbSet<Finding> Findings { get; }
-    // ...only expose what Application needs
+    DbSet<MonitoredRepository> MonitoredRepositories { get; }
+    DbSet<RepositorySetting> RepositorySettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct);
-    DatabaseFacade Database { get; } // needed for transactions
+    DatabaseFacade Database { get; }
+
+    void SetOriginalVersion<TEntity>(TEntity entity, uint version) where TEntity : class;
+
 }
