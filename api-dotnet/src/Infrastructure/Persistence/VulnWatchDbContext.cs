@@ -37,6 +37,7 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder); // must call base — sets up Identity tables
+        builder.HasCollation("case_insensitive", "und-u-ks-primary", "icu", false);
 
         builder.Entity<User>(e =>
         {
@@ -363,6 +364,58 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.HasIndex(w => new { w.Status, w.CreatedAt })
             .HasFilter("\"Status\" = 'Pending'")
             .HasDatabaseName("IX_WebHookOutBox_Pending_CreatedAt");
+        });
+
+        builder.Entity<Waitlist>(e =>
+        {
+            e.HasKey(w => w.Id);
+
+            e.Property(w => w.Email)
+                .IsRequired()
+                .HasMaxLength(254)
+                .UseCollation("case_insensitive");
+
+            e.Property(w => w.CompanyName)
+                .HasMaxLength(200)
+                .IsRequired(false);
+
+            e.Property(w => w.Comments)
+                .HasMaxLength(2000)
+                .IsRequired(false);
+
+            e.Property(w => w.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(WaitlistStatus.Pending);
+
+            e.Property(w => w.Position)
+                .IsRequired();
+
+            e.Property(w => w.EmailConfirmed)
+                .HasDefaultValue(false);
+
+            e.Property(w => w.EmailConfirmationToken)
+                .HasMaxLength(500)
+                .IsRequired(false);
+
+            e.Property(w => w.InvitationToken)
+                .HasMaxLength(500)
+                .IsRequired(false);
+
+            e.Property(w => w.Notes)
+                .IsRequired(false);
+
+            // Indexes
+            e.HasIndex(w => w.Email)
+                .IsUnique()
+                .HasDatabaseName("IX_Waitlists_Email")
+                .UseCollation("case_insensitive");
+            e.HasIndex(w => w.Status).HasDatabaseName("IX_Waitlists_Status");
+            e.HasIndex(w => w.Position).IsUnique().HasDatabaseName("IX_Waitlists_Position");
+            e.HasIndex(w => w.CreatedAt).HasDatabaseName("IX_Waitlists_CreatedAt");
+            e.HasIndex(w => w.PromotedUserId).HasDatabaseName("IX_Waitlists_PromotedUserId");
+
+            e.ToTable("Waitlists");
         });
 
         builder.Entity<Alert>(e =>
