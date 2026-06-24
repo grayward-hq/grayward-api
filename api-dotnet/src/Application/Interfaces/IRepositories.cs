@@ -163,3 +163,31 @@ public interface ISubscriptionRepository : IRepository<Subscription>
     Task<Subscription?> GetActiveByUser(Guid userId, CancellationToken ct);
 }
 
+public interface IWaitlistRepository : IRepository<Waitlist>
+{
+    // Queries
+    Task<Waitlist?> FindByEmail(string email, CancellationToken ct);
+    Task<Waitlist?> GetById(Guid id, CancellationToken ct);
+    Task<long> GetNextPosition(CancellationToken ct);
+    Task<long> GetPositionByEmail(string email, CancellationToken ct);
+    Task<int> GetTotalCount(CancellationToken ct);
+    Task<(List<Waitlist> Items, int TotalCount)> GetPaged(
+        WaitlistStatus? status,
+        int page,
+        int pageSize,
+        string? searchEmail,
+        string sortBy,
+        string sortOrder,
+        CancellationToken ct);
+
+    // Analytics
+    Task<int> CountByStatus(WaitlistStatus status, CancellationToken ct);
+    Task<int> CountCreatedSince(DateTime since, CancellationToken ct);
+    Task<int> CountPromotedSince(DateTime since, CancellationToken ct);
+    Task<double> GetAverageDaysToPromotion(CancellationToken ct);
+    Task<List<(string Company, int Count)>> GetTopCompanies(CancellationToken ct, int limit = 10);
+
+    // Utility
+    Task<bool> ExistsByEmail(string email, CancellationToken ct);
+    Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct);
+}

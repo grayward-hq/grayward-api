@@ -3,6 +3,7 @@ using System;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(VulnWatchDbContext))]
-    partial class VulnWatchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623003721_AddWaitlistComments")]
+    partial class AddWaitlistComments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -378,10 +381,6 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("CloneUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -393,22 +392,14 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("InstallationId")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<long>("GitHubInstallationId")
+                        .HasColumnType("bigint");
 
-                    b.Property<bool>("IsPrivate")
+                    b.Property<bool>("IsMonitoringActive")
                         .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset?>("LastScanCompletedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("RepoId")
                         .HasColumnType("bigint");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -418,11 +409,11 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RepoId")
+                        .IsUnique();
+
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_MonitoredRepositories_UserId");
-
-                    b.HasIndex("UserId", "RepoId")
-                        .IsUnique();
 
                     b.ToTable("MonitoredRepositories");
                 });
@@ -595,56 +586,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("Remediations");
                 });
 
-            modelBuilder.Entity("Domain.Entities.RepositorySetting", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("AlertChannels")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("EventScanEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastScanAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("NextScanDueAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("PeriodicScanEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("PeriodicScanFrequency")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("RepositoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Triggers")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<uint>("Version")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RepositoryId")
-                        .IsUnique();
-
-                    b.ToTable("RepositorySettings");
-                });
-
             modelBuilder.Entity("Domain.Entities.Scan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -765,48 +706,6 @@ namespace Infrastructure.Migrations
                         .HasFilter("\"VerificationStatus\" = 'Verified' AND \"SslCertExpiry\" IS NOT NULL");
 
                     b.ToTable("Domains");
-                });
-
-            modelBuilder.Entity("Domain.Entities.Subscription", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CurrentPeriodEnd")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CurrentPeriodStart")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Plan")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CurrentPeriodEnd");
-
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasFilter("\"Status\" = 'Active'");
-
-                    b.HasIndex("UserId", "Status");
-
-                    b.ToTable("Subscriptions");
                 });
 
             modelBuilder.Entity("Domain.Entities.User", b =>
@@ -1278,15 +1177,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("Finding");
                 });
 
-            modelBuilder.Entity("Domain.Entities.RepositorySetting", b =>
-                {
-                    b.HasOne("Domain.Entities.MonitoredRepository", null)
-                        .WithOne("Settings")
-                        .HasForeignKey("Domain.Entities.RepositorySetting", "RepositoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Domain.Entities.Scan", b =>
                 {
                     b.HasOne("Domain.Entities.ScannedDomain", "Domain")
@@ -1316,17 +1206,6 @@ namespace Infrastructure.Migrations
                 {
                     b.HasOne("Domain.Entities.User", "User")
                         .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Domain.Entities.Subscription", b =>
-                {
-                    b.HasOne("Domain.Entities.User", "User")
-                        .WithMany("Subscriptions")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1388,9 +1267,6 @@ namespace Infrastructure.Migrations
             modelBuilder.Entity("Domain.Entities.MonitoredRepository", b =>
                 {
                     b.Navigation("Scans");
-
-                    b.Navigation("Settings")
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Domain.Entities.Scan", b =>
@@ -1405,11 +1281,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("MonitoredEmails");
 
                     b.Navigation("Scans");
-                });
-
-            modelBuilder.Entity("Domain.Entities.User", b =>
-                {
-                    b.Navigation("Subscriptions");
                 });
 #pragma warning restore 612, 618
         }

@@ -246,6 +246,8 @@ builder.Services.AddHostedService<MonitoringWorker>();
 builder.Services.AddHostedService<ScanReaperWorker>();
 builder.Services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
 builder.Services.AddScoped<IDomainSettingsRepository, DomainSettingsRepository>();
+builder.Services.AddScoped<IWaitlistRepository, WaitlistRepository>();
+builder.Services.AddScoped<IWaitlistCancellationTokenService, WaitlistCancellationTokenService>();
 builder.Services.AddHttpClient("anthropic");  // base URL set per-request in the service
 builder.Services.AddHttpClient("gemini");     // base URL set per-request in the service
 builder.Services
