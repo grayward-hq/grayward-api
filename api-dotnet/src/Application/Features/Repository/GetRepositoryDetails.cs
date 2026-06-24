@@ -20,10 +20,11 @@ public class GetRepoDetailHandler(
 {
     public async Task<Result<RepoDetailDto>> Handle(GetRepoDetailQuery q, CancellationToken ct)
     {
-        if (q.TrendDays <= 0)
+        const int MaxTrendDays = 365;
+        if (q.TrendDays <= 0 || q.TrendDays > MaxTrendDays)
         {
             return Result<RepoDetailDto>.Failure(
-                Error.Validation("TrendDays must be greater than zero."));
+                Error.Validation($"TrendDays must be between 1 and {MaxTrendDays}."));
         }
 
         var userId = currentUser.UserId;

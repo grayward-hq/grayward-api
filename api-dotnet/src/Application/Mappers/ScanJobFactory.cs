@@ -13,10 +13,10 @@ public sealed class ScanJobFactory : IScanJobFactory
             DomainName: scan.Domain?.DomainName ?? string.Empty,
             RepoId: scan.RepositoryId?.ToString() ?? string.Empty,
             ScanId: scan.Id.ToString(),
-            ScanType: scan.Coverage.ToString(),
+            ScanType: scan.TargetType.ToString(),
             SurfaceType: scan.SurfaceTypes.ToString(),
             RequestedBy: scan.UserId.ToString(),
-            EnqueuedAt: DateTimeOffset.UtcNow.ToString("O")
+            EnqueuedAt: scan.CreatedAt.ToString("O")
         );
     }
 }

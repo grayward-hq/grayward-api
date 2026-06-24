@@ -9,13 +9,18 @@ namespace Infrastructure.Persistence.Repositories;
 public sealed class SubscriptionRepository(VulnWatchDbContext db)
     : BaseRepository<Subscription>(db), ISubscriptionRepository
 {
-    public Task<Subscription?> GetActiveByUserForUpdate(Guid userId, CancellationToken ct)
-        => Db.Subscriptions
+    public async Task<Subscription?> GetActiveByUserForUpdate(Guid userId, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return await Db.Subscriptions
             .FromSql($@"SELECT * FROM subscriptions
-                        WHERE user_id = {userId} AND status = 'Active'
+                        WHERE user_id = {userId}
+                          AND status = 'Active'
+                          AND current_period_start <= {now}
+                          AND current_period_end >= {now}
                         LIMIT 1 FOR UPDATE")
-            .ToListAsync(ct)
-            .ContinueWith(t => t.Result.FirstOrDefault(), ct);
+            .FirstOrDefaultAsync(ct);
+    }
 
     public Task<Subscription?> GetActiveByUser(Guid userId, CancellationToken ct = default)
     {

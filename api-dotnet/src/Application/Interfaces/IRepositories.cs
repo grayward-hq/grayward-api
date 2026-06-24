@@ -144,7 +144,7 @@ public interface IScanRepository : IRepository<Scan>
     Task<Scan?> FindLatestCompletedForRepository(Guid repositoryId, CancellationToken ct);
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
-    Task<Scan?> FindRunningByRepoid(Guid repoId, CancellationToken ct);
+    Task<Scan?> FindRunningByRepoId(Guid repoId, CancellationToken ct);  
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
     Task<List<ScanScoreDto>> GetRecentCompletedScans(
         Guid userId,

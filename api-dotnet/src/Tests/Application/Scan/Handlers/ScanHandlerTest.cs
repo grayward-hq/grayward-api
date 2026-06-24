@@ -133,6 +133,93 @@ public class StartScanHandlerTests
                 It.IsAny<ScanJob>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+            
+        _quota.Verify(x =>
+            x.ReserveScanSlot(
+                _userId,
+                ResourceKind.Domain,
+                It.IsAny<Scan>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_VerifiedRepository_NoRunningScan_EnqueuesScan()
+    {
+        var repo = Fakes.TestMonitoredRepo(
+            234567,
+            _userId,
+            "test",
+            "https://github.com/test/repo",
+            "install_123",
+            false,
+            RepositoryStatus.Active);
+
+        _scanRepo.Setup(x =>
+                x.FindByIdempotencyKey(
+                    It.IsAny<Guid>(),
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Scan?)null);
+
+        _repoRepo.Setup(x =>
+                x.GetUserRepoByRepoId(
+                    _userId,
+                    repo.Id,
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(repo);
+
+        _scanRepo.Setup(x =>
+                x.FindRunningByRepoId(
+                    repo.Id,
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Scan?)null);
+
+        _quota.Setup(x =>
+                x.ReserveScanSlot(
+                    _userId,
+                    ResourceKind.Repository,
+                    It.IsAny<Scan>(),
+                    It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<Scan>.Success(
+                Fakes.TestScan(_userId, repo.Id, ScanStatus.Queued)));
+
+        _scanJobFactory.Setup(x =>
+                x.Create(It.IsAny<Scan>()))
+            .Returns(new ScanJob(
+                "repository",
+                repo.CloneUrl,
+                "",
+                Guid.NewGuid().ToString(),
+                "Quick",
+                "Dns",
+                _userId.ToString(),
+                DateTime.UtcNow.ToString("O")));
+
+        var result = await _sut.Handle(
+            new StartScanCommand(
+                repo.Id,
+                ScanTargetType.Repository,
+                ScanCoverage.Quick,
+                SurfaceType.Ssl,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+
+        _redis.Verify(x =>
+            x.PublishScanJob(
+                "scan-jobs",
+                It.IsAny<ScanJob>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _quota.Verify(x =>
+            x.ReserveScanSlot(
+                _userId,
+                ResourceKind.Repository,
+                It.IsAny<Scan>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

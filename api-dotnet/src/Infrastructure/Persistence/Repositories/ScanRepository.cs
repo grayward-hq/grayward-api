@@ -44,7 +44,7 @@ public sealed class ScanRepository(VulnWatchDbContext db)
                 s.DomainId == domainId &&
                 (s.Status == ScanStatus.Queued || s.Status == ScanStatus.Running), ct);
 
-    public Task<Scan?> FindRunningByRepoid(Guid repoId, CancellationToken ct) =>
+    public Task<Scan?> FindRunningByRepoId(Guid repoId, CancellationToken ct) =>
         Db.Scans
             .FirstOrDefaultAsync(s =>
                 s.RepositoryId == repoId &&

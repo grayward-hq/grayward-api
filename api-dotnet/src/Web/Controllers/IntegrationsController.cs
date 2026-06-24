@@ -13,7 +13,7 @@ using Web.Extensions;
 namespace Web.Controllers;
 
 [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
-[Authorize]               
+[AllowAnonymous]               
 [ApiController]
 [Route("api/[controller]")]
 public class IntegrationsController(IMediator mediator, IConfiguration config)

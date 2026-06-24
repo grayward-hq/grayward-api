@@ -106,11 +106,11 @@ public class StartScanHandler(
                 if (repository.Status != RepositoryStatus.Active)
                     return Result<StartScanResponse>.Failure(Error.Forbidden("Repository is not active."));
 
-                var runningRepoScan = await scans.FindRunningByRepoid(repository.Id, ct);
+                var runningRepoScan = await scans.FindRunningByRepoId(repository.Id, ct);
                 if (runningRepoScan is not null)
                 {
                     return Result<StartScanResponse>.Success(
-                        new StartScanResponse(runningRepoScan.Id, runningRepoScan.Status, "A scan is already in progress for this domain."));
+                        new StartScanResponse(runningRepoScan.Id, runningRepoScan.Status, "A scan is already in progress for this repository."));
                 }
 
                 repositoryId = repository.Id;
