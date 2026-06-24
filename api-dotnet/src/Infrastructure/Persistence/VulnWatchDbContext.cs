@@ -22,6 +22,7 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     public DbSet<BrandThreat> BrandThreats => Set<BrandThreat>();
     public DbSet<ScannedDomain> Domains => Set<ScannedDomain>();
     public DbSet<Scan> Scans => Set<Scan>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<Remediation> Remediations => Set<Remediation>();
     public DbSet<Integration> Integrations => Set<Integration>();
@@ -32,11 +33,15 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     public DbSet<WebHookOutBox> WebHookOutBox => Set<WebHookOutBox>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<DomainSettings> DomainSettings => Set<DomainSettings>();
+    public DbSet<RepositorySetting> RepositorySettings => Set<RepositorySetting>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+    public void SetOriginalVersion<TEntity>(TEntity entity, uint version) where TEntity : class
+        => Entry(entity).Property("Version").OriginalValue = version;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder); // must call base — sets up Identity tables
+        builder.HasCollation("case_insensitive", "und-u-ks-primary", "icu", false);
 
         builder.Entity<User>(e =>
         {
@@ -85,6 +90,31 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.HasIndex(d => new { d.VerificationStatus, d.SslCertExpiry })
                 .HasFilter("\"VerificationStatus\" = 'Verified' AND \"SslCertExpiry\" IS NOT NULL")
                 .HasDatabaseName("IX_ScannedDomains_Verified_SslCertExpiry");
+        });
+
+        builder.Entity<Subscription>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.Plan)
+                .HasConversion<string>();
+
+            e.Property(x => x.Status)
+                .HasConversion<string>();
+
+            e.HasOne(x => x.User)
+                .WithMany(u => u.Subscriptions)
+                .HasForeignKey(x => x.UserId);
+
+            e.HasIndex(x => x.UserId);
+
+            e.HasIndex(x => new { x.UserId, x.Status });
+
+            e.HasIndex(x => x.CurrentPeriodEnd);
+
+            e.HasIndex(x => x.UserId)
+                .IsUnique()
+                .HasFilter("\"Status\" = 'Active'");
         });
 
         builder.Entity<DomainSettings>(e =>
@@ -336,7 +366,14 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
 
         builder.Entity<MonitoredRepository>(e =>
         {
-            e.HasIndex(r => r.RepoId).IsUnique();
+            e.Property(x => x.Status)
+                .HasConversion<string>();
+            e.HasIndex(r => new { r.UserId, r.RepoId })
+                .IsUnique();
+            e.HasOne(r => r.Settings)
+                .WithOne()
+                .HasForeignKey<RepositorySetting>(s => s.RepositoryId)
+                .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(r => r.User)
              .WithMany()
              .HasForeignKey(r => r.UserId)
@@ -345,6 +382,14 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
              .HasDatabaseName("IX_MonitoredRepositories_UserId");
         });
 
+        builder.Entity<RepositorySetting>(e =>
+        {
+           e.Property(s => s.Version)
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+        });
         builder.Entity<NotificationPreferences>(e =>
         {
             e.HasOne(n => n.User)
@@ -363,6 +408,58 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.HasIndex(w => new { w.Status, w.CreatedAt })
             .HasFilter("\"Status\" = 'Pending'")
             .HasDatabaseName("IX_WebHookOutBox_Pending_CreatedAt");
+        });
+
+        builder.Entity<Waitlist>(e =>
+        {
+            e.HasKey(w => w.Id);
+
+            e.Property(w => w.Email)
+                .IsRequired()
+                .HasMaxLength(254)
+                .UseCollation("case_insensitive");
+
+            e.Property(w => w.CompanyName)
+                .HasMaxLength(200)
+                .IsRequired(false);
+
+            e.Property(w => w.Comments)
+                .HasMaxLength(2000)
+                .IsRequired(false);
+
+            e.Property(w => w.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(WaitlistStatus.Pending);
+
+            e.Property(w => w.Position)
+                .IsRequired();
+
+            e.Property(w => w.EmailConfirmed)
+                .HasDefaultValue(false);
+
+            e.Property(w => w.EmailConfirmationToken)
+                .HasMaxLength(500)
+                .IsRequired(false);
+
+            e.Property(w => w.InvitationToken)
+                .HasMaxLength(500)
+                .IsRequired(false);
+
+            e.Property(w => w.Notes)
+                .IsRequired(false);
+
+            // Indexes
+            e.HasIndex(w => w.Email)
+                .IsUnique()
+                .HasDatabaseName("IX_Waitlists_Email")
+                .UseCollation("case_insensitive");
+            e.HasIndex(w => w.Status).HasDatabaseName("IX_Waitlists_Status");
+            e.HasIndex(w => w.Position).IsUnique().HasDatabaseName("IX_Waitlists_Position");
+            e.HasIndex(w => w.CreatedAt).HasDatabaseName("IX_Waitlists_CreatedAt");
+            e.HasIndex(w => w.PromotedUserId).HasDatabaseName("IX_Waitlists_PromotedUserId");
+
+            e.ToTable("Waitlists");
         });
 
         builder.Entity<Alert>(e =>

@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Builder;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.RateLimiting;
+using Tests.Infrastructure.Services;
 
 namespace Tests.Integration;
 
@@ -25,6 +26,18 @@ public sealed class NoOpEmailService : IEmailService
 public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private SqliteConnection? _connection;
+    private readonly Dictionary<string, string?> _originalEnvironmentVariables = new();
+
+    public VulnWatchWebAppFactory()
+    {
+        SetDefaultEnvironmentVariable("ConnectionStrings__DefaultConnectionString", "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test");
+        SetDefaultEnvironmentVariable("Jwt__SecretKey", "super-secret-test-key-32-chars-min!!");
+        SetDefaultEnvironmentVariable("Jwt__ExpireInMinute", "60");
+        SetDefaultEnvironmentVariable("Jwt__RefreshTokenExpiryDays", "7");
+        SetDefaultEnvironmentVariable("Cors__AllowedOrigins__0", "https://test.example.com");
+        SetDefaultEnvironmentVariable("Contact__InternalEmail", "support@example.com");
+        SetDefaultEnvironmentVariable("Waitlist__CancellationTokenSecret", "test-waitlist-cancellation-secret-32-chars");
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -42,6 +55,12 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
             services.RemoveAll<IEmailService>();
             services.AddSingleton<IEmailService, NoOpEmailService>();
 
+            services.RemoveAll<IQuotaService>();
+            services.RemoveAll<IScanJobFactory>();
+
+            services.AddScoped<IQuotaService, FakeQuotaService>();
+            services.AddScoped<IScanJobFactory, FakeScanJobFactory>();
+
             services.RemoveAll<IConfigureOptions<RateLimiterOptions>>();
 
             services.AddRateLimiter(options =>
@@ -58,6 +77,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["ConnectionStrings:DefaultConnectionString"] = "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test",
                 ["Jwt:SecretKey"] = "super-secret-test-key-32-chars-min!!",
                 ["Jwt:ExpireInMinute"] = "60",
                 ["Jwt:RefreshTokenExpiryDays"] = "7",
@@ -66,6 +86,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["Redis:Configuration"] = "localhost:6379",
                 ["FrontendUrl:Verify"] = "https://test.example.com/verify",
                 ["FrontendUrl:ForgotPassword"] = "https://test.example.com/reset",
+                ["FrontendUrl:PasswordReset"] = "https://test.example.com/set-password",
                 ["Cors:AllowedOrigins:0"] = "https://test.example.com",
                 ["Dns:Lookup"] = "false",
                 ["RateLimit:Auth:PermitLimit"] = "1000",
@@ -73,6 +94,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["RateLimit:General:PermitLimit"] = "1000",
                 ["RateLimit:General:WindowSeconds"] = "60",
                 ["Contact:InternalEmail"] = "support@example.com",
+                ["Waitlist:CancellationTokenSecret"] = "test-waitlist-cancellation-secret-32-chars",
                 ["SmtpCredentials:Host"] = "smtp.test.com",
                 ["SmtpCredentials:Port"] = "587",
                 ["SmtpCredentials:Username"] = "test@test.com",
@@ -92,9 +114,16 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public new async Task DisposeAsync()
     {
-        await base.DisposeAsync();
-        if (_connection is not null)
-            await _connection.DisposeAsync();
+        try
+        {
+            await base.DisposeAsync();
+            if (_connection is not null)
+                await _connection.DisposeAsync();
+        }
+        finally
+        {
+            RestoreEnvironmentVariables();
+        }
     }
 
     public async Task<(User user, string token)> CreateAuthenticatedUserAsync(
@@ -155,5 +184,22 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         await db.SaveChangesAsync();
 
         return domain.Id;
+    }
+
+    private void SetDefaultEnvironmentVariable(string key, string value)
+    {
+        if (!_originalEnvironmentVariables.ContainsKey(key))
+            _originalEnvironmentVariables[key] = Environment.GetEnvironmentVariable(key);
+
+        if (string.IsNullOrWhiteSpace(_originalEnvironmentVariables[key]))
+            Environment.SetEnvironmentVariable(key, value);
+    }
+
+    private void RestoreEnvironmentVariables()
+    {
+        foreach (var (key, value) in _originalEnvironmentVariables)
+        {
+            Environment.SetEnvironmentVariable(key, value);
+        }
     }
 }
