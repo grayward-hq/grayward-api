@@ -1,10 +1,12 @@
 using Application.Features.Chat.DTOs;
 using Application.Features.Scans.DTOs;
+using Domain.Entities;
 
 namespace Application.Interfaces;
 
 public interface IRedisService
 {
+    // Task PublishScanJob(string queue, Scan job, CancellationToken ct = default);
     Task PublishScanJob(string queue, ScanJob job, CancellationToken ct = default);
     Task<ChatSession?> GetChatSession(Guid sessionId, CancellationToken ct);
     Task SetChatSession(ChatSession session, CancellationToken ct);

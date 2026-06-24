@@ -14,4 +14,10 @@ public sealed class IntegrationRepository(VulnWatchDbContext db)
             .FirstOrDefaultAsync(i =>
                 i.UserId == userId &&
                 i.Provider == provider && i.Status == IntegrationStatus.ACTIVE, ct);
+
+    public Task<Integration?> GetByInstallationIdAndProvider(string installationId, IntegrationProvider provider, CancellationToken ct) =>
+        Db.Integrations
+            .FirstOrDefaultAsync(i =>
+                    i.InstallationId == installationId &&
+                    i.Provider == provider && i.Status == IntegrationStatus.ACTIVE, ct);
 }

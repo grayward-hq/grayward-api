@@ -12,7 +12,7 @@ public class VulnWatchDbContextFactory : IDesignTimeDbContextFactory<VulnWatchDb
 
         var configuration = new ConfigurationBuilder()
             .SetBasePath(basePath)
-            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile("appsettings.json", optional: true)
             .AddJsonFile("appsettings.Development.json", optional: true)
             .AddEnvironmentVariables()
             .Build();
@@ -39,10 +39,10 @@ public class VulnWatchDbContextFactory : IDesignTimeDbContextFactory<VulnWatchDb
 
         foreach (var candidate in candidates.Select(Path.GetFullPath))
         {
-            if (File.Exists(Path.Combine(candidate, "appsettings.json")))
+            if (File.Exists(Path.Combine(candidate, "Web.csproj")))
                 return candidate;
         }
 
-        throw new InvalidOperationException("Could not locate the Web project appsettings.json for design-time DbContext creation.");
+        throw new InvalidOperationException("Could not locate the Web project for design-time DbContext creation.");
     }
 }

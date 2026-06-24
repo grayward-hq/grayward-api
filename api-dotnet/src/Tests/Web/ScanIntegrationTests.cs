@@ -31,7 +31,7 @@ public class ScanControllerTests : IClassFixture<VulnWatchWebAppFactory>
     }
 
     [Fact]
-    public async Task POST_scans_UnknownDomain_Returns404()
+    public async Task POST_scans_UnknownDomain_Returns400()
     {
         var (_, token)       = await _factory.CreateAuthenticatedUserAsync($"scan_{Guid.NewGuid():N}@example.com");
         using var authClient = _factory.CreateAuthenticatedClient(token);
@@ -49,7 +49,7 @@ public class ScanControllerTests : IClassFixture<VulnWatchWebAppFactory>
 
         var response = await authClient.SendAsync(request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     // [Fact]

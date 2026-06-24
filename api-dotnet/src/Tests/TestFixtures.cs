@@ -29,6 +29,32 @@ public static class Fakes
             {
                 if (status == VerificationStatus.Verified) d.Verify();
             });
+
+    public static MonitoredRepository TestMonitoredRepo(
+        long? repoId = null,
+        Guid? userId = null,
+        string fullName = "test/repo",
+        string cloneUrl = "https://github.com/test/repo",
+        string installationId = "install_123",
+        bool isPrivate = false,
+        RepositoryStatus status = RepositoryStatus.PendingVerification)
+    {
+        var repo = MonitoredRepository.Create(
+            repoId ?? 12345,
+            userId ?? Guid.NewGuid(),
+            fullName,
+            cloneUrl,
+            installationId,
+            isPrivate
+        );
+
+        if (status == RepositoryStatus.Active)
+            repo.Activate();
+        else if (status == RepositoryStatus.Suspended)
+            repo.Suspend();
+
+        return repo;
+    }
  
     public static Scan TestScan(
         Guid? userId = null,

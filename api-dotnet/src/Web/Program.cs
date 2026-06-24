@@ -1,4 +1,5 @@
 using Application.Behaviours;
+using Application.Catalogs;
 using Application.Features.Alerts;
 using Application.Features.Alerts.SslExpiry;
 using Application.Features.Auth;
@@ -6,6 +7,8 @@ using Application.Features.BreachMonitoring;
 using Application.Features.Scans;
 using Application.Helpers;
 using Application.Interfaces;
+using Application.Mappers;
+using Application.Options;
 using Application.Services;
 using DnsClient;
 using Domain.Entities;
@@ -210,6 +213,9 @@ builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IDomainRepository, DomainRepository>();
 builder.Services.AddScoped<IScanRepository, ScanRepository>();
+builder.Services.AddScoped<IMonitoredRepoRepository, MonitoredRepoRepository>();
+builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+builder.Services.AddScoped<IFindingRepository, FindingRepository>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<LookupClient>(_ =>
@@ -240,6 +246,8 @@ builder.Services.AddHostedService<MonitoringWorker>();
 builder.Services.AddHostedService<ScanReaperWorker>();
 builder.Services.AddScoped<INotificationPreferencesRepository, NotificationPreferencesRepository>();
 builder.Services.AddScoped<IDomainSettingsRepository, DomainSettingsRepository>();
+builder.Services.AddScoped<IWaitlistRepository, WaitlistRepository>();
+builder.Services.AddScoped<IWaitlistCancellationTokenService, WaitlistCancellationTokenService>();
 builder.Services.AddHttpClient("anthropic");  // base URL set per-request in the service
 builder.Services.AddHttpClient("gemini");     // base URL set per-request in the service
 builder.Services
@@ -259,13 +267,16 @@ builder.Services.AddScoped<OpenAiChatService>();
 builder.Services.AddScoped<IChatServiceFactory, ChatServiceFactory>();
 builder.Services.AddScoped<IChatService>(sp =>
         sp.GetRequiredService<IChatServiceFactory>().Resolve());
-
 builder.Services.AddHttpClient("slack");
 builder.Services.AddScoped<ISlackService, SlackService>();
+builder.Services.AddSingleton<IPlanCatalog, PlanCatalog>();
+builder.Services.AddScoped<IQuotaService, QuotaService>();
+builder.Services.AddScoped<IScanJobFactory, ScanJobFactory>();
 builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
 builder.Services.AddDataProtection()
         .PersistKeysToDbContext<VulnWatchDbContext>()
         .SetApplicationName("VulnWatch");
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddHostedService<DomainVerificationReaper>();
 builder.Services.AddScoped<OwaspEvaluationEngine>();
 builder.Services.AddHttpClient("BrandProtection", client =>
@@ -285,6 +296,15 @@ builder.Services.AddScoped<BrandProtectionCheckService>();
 builder.Services.AddScoped<LookAlikeDomainChecker>();
 builder.Services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
 builder.Services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
+builder.Services.Configure<GitHubAppOptions>(builder.Configuration.GetSection("GitHubApp"));
+builder.Services.AddSingleton<GitHubAppJwtFactory>();
+builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("VulnWatch");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+});
 
 QuestPDF.Settings.License = LicenseType.Community;
         
@@ -358,6 +378,7 @@ app.UseSwaggerUI(options =>
 app.UseHttpsRedirection();
 app.UseForwardedHeaders();
 app.UseCors("DefaultCors");
+app.UseMiddleware<ExceptionHandlingMiddleware>(); 
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<JwtMiddleware>();
