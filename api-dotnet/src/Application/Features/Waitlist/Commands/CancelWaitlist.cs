@@ -35,7 +35,7 @@ public class CancelWaitlistHandler : IRequestHandler<CancelWaitlistCommand, Resu
 
     public async Task<Result<MessageResponse>> Handle(CancelWaitlistCommand cmd, CancellationToken ct)
     {
-        var normalizedEmail = cmd.Email.ToLower();
+        var normalizedEmail = cmd.Email.ToLowerInvariant();
         var entry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
 
         if (entry is null)

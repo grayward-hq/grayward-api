@@ -216,7 +216,7 @@ public class CancelWaitlistHandlerTests
 
         // Assert
         Assert.True(result.IsSuccess);
-        _mockWaitlistRepo.Verify(r => r.FindByEmail(mixedCaseEmail.ToLower(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.FindByEmail(mixedCaseEmail.ToLowerInvariant(), It.IsAny<CancellationToken>()), Times.Once);
 
         // Token should be validated against the *normalized* (lowercased) email,
         // matching what the handler actually signs/checks against.

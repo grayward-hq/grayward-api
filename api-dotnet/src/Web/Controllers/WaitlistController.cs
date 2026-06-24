@@ -7,6 +7,7 @@ using Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.RateLimiting;
 using Web.Extensions;
 
@@ -62,7 +63,8 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email))
-            return BadRequest(new { error = "Email is required" });
+            return Result<WaitlistStatusResponse>.Failure(
+                Error.Validation("Email is required")).ToHttpResponse(this);
 
         var result = await _mediator.Send(
             new GetWaitlistStatusQuery(email), ct);
@@ -87,7 +89,8 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token))
-            return BadRequest(new { error = "Email and token are required" });
+            return Result<MessageResponse>.Failure(
+                Error.Validation("Email and token are required")).ToHttpResponse(this);
 
         var result = await _mediator.Send(
             new VerifyWaitlistEmailCommand(email, token), ct);
@@ -177,8 +180,7 @@ public class WaitlistController : ControllerBase
     /// Update waitlist entry (Admin only).
     /// </summary>
     /// <param name="waitlistId">Waitlist entry ID.</param>
-    /// <param name="companyName">Company name (optional).</param>
-    /// <param name="notes">Admin notes (optional).</param>
+    /// <param name="request">Company name and admin notes to update (optional).</param>
     /// <param name="status">New status (optional).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Entry updated successfully.</response>
@@ -191,13 +193,12 @@ public class WaitlistController : ControllerBase
     [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
     public async Task<ActionResult<Result<WaitlistListItemDto>>> UpdateWaitlist(
         [FromRoute] Guid waitlistId,
-        [FromQuery] string? companyName = null,
-        [FromQuery] string? notes = null,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] UpdateWaitlistRequest? request = null,
         [FromQuery] WaitlistStatus? status = null,
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new UpdateWaitlistCommand(waitlistId, companyName, notes, status), ct);
+            new UpdateWaitlistCommand(waitlistId, request?.CompanyName, request?.Notes, status), ct);
         return result.ToHttpResponse(this);
     }
 

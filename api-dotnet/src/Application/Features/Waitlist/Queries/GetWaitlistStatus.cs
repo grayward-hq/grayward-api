@@ -1,7 +1,6 @@
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
-using Domain.Entities;
 using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -26,23 +25,18 @@ public class GetWaitlistStatusHandler : IRequestHandler<GetWaitlistStatusQuery, 
 
     public async Task<Result<WaitlistStatusResponse>> Handle(GetWaitlistStatusQuery query, CancellationToken ct)
     {
-        var entry = await _waitlistRepo.FindByEmail(query.Email.ToLower(), ct);
-        if (entry is null)
-        {
-            _logger.LogDebug("Status query for non-existent email: {email}", query.Email);
-            return Result<WaitlistStatusResponse>.Failure(
-                Error.NotFound("Email not found on waitlist"));
-        }
-
         var totalCount = await _waitlistRepo.GetTotalCount(ct);
+        var normalizedEmail = query.Email.ToLowerInvariant();
+
+        _logger.LogDebug("Waitlist status query masked for email: {email}", query.Email);
 
         return Result<WaitlistStatusResponse>.Success(
             new WaitlistStatusResponse(
-                entry.Email,
-                entry.Position,
+                normalizedEmail,
+                Position: 0,
                 totalCount,
-                entry.Status,
-                entry.EmailConfirmed,
-                entry.CreatedAt));
+                WaitlistStatus.Pending,
+                EmailConfirmed: false,
+                JoinedAt: DateTime.UtcNow));
     }
 }

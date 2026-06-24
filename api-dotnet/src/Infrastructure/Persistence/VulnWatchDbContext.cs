@@ -37,6 +37,7 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder); // must call base — sets up Identity tables
+        builder.HasCollation("case_insensitive", "und-u-ks-primary", "icu", false);
 
         builder.Entity<User>(e =>
         {
@@ -371,7 +372,8 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
 
             e.Property(w => w.Email)
                 .IsRequired()
-                .HasMaxLength(254);
+                .HasMaxLength(254)
+                .UseCollation("case_insensitive");
 
             e.Property(w => w.CompanyName)
                 .HasMaxLength(200)
@@ -404,7 +406,10 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .IsRequired(false);
 
             // Indexes
-            e.HasIndex(w => w.Email).IsUnique().HasDatabaseName("IX_Waitlists_Email");
+            e.HasIndex(w => w.Email)
+                .IsUnique()
+                .HasDatabaseName("IX_Waitlists_Email")
+                .UseCollation("case_insensitive");
             e.HasIndex(w => w.Status).HasDatabaseName("IX_Waitlists_Status");
             e.HasIndex(w => w.Position).IsUnique().HasDatabaseName("IX_Waitlists_Position");
             e.HasIndex(w => w.CreatedAt).HasDatabaseName("IX_Waitlists_CreatedAt");

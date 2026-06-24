@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Domain.Common;
 
 /// <summary>
@@ -9,7 +11,11 @@ namespace Domain.Common;
 /// (no stack traces, no internal details).
 /// </para>
 /// </summary>
-public record Error(ErrorCode Code, string Message)
+public record Error(
+    ErrorCode Code,
+    string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    object? Details = null)
 {
     /// <summary>429 — the caller has exceeded an allowed quota or rate limit.</summary>
     public static Error RateLimited(string message) => new(ErrorCode.RateLimited, message);
@@ -17,7 +23,7 @@ public record Error(ErrorCode Code, string Message)
     public static Error NotFound(string message) => new(ErrorCode.NotFound, message);
 
     /// <summary>409 — the request clashes with existing state (e.g. duplicate idempotency key).</summary>
-    public static Error Conflict(string message, object? details = null) => new(ErrorCode.Conflict, message);
+    public static Error Conflict(string message, object? details = null) => new(ErrorCode.Conflict, message, details);
 
     /// <summary>400 — the request data is invalid or missing required fields.</summary>
     public static Error Validation(string message) => new(ErrorCode.Validation, message);

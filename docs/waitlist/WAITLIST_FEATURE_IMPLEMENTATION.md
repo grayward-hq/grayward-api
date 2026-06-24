@@ -89,8 +89,8 @@ The implementation follows a 4-layer architecture:
 ```
 
 **Business Logic**:
-- Case-insensitive email lookup
-- Returns current position and total waitlist size
+- Normalizes email casing
+- Returns a generic status response and total waitlist size without revealing whether the email is on the waitlist
 
 #### 4. Cancel Waitlist (Public)
 **Endpoint**: `POST /api/waitlist/cancel`
@@ -116,14 +116,11 @@ The implementation follows a 4-layer architecture:
 - Marks entry as Cancelled
 
 #### 5. Promote to User (Admin)
-**Endpoint**: `POST /api/admin/waitlist/{id}/promote`
+**Endpoint**: `POST /api/waitlist/admin/{id}/promote`
 
-**Request**:
-```json
-{
-  "firstName": "John",
-  "lastName": "Doe"
-}
+**Query Parameters**:
+```http
+?firstName=John&lastName=Doe&sendInvitationEmail=true
 ```
 
 **Response**:
@@ -144,7 +141,7 @@ The implementation follows a 4-layer architecture:
 - Ensures atomicity (all-or-nothing)
 
 #### 6. List Waitlist (Admin)
-**Endpoint**: `GET /api/admin/waitlist/list?page=1&pageSize=20&status=EmailConfirmed&searchEmail=user&sortBy=position&sortOrder=asc`
+**Endpoint**: `GET /api/waitlist/admin/list?page=1&pageSize=20&status=EmailConfirmed&searchEmail=user&sortBy=position&sortOrder=asc`
 
 **Response**:
 ```json
@@ -174,14 +171,13 @@ The implementation follows a 4-layer architecture:
 - Default: Sort by position ascending
 
 #### 7. Update Waitlist (Admin)
-**Endpoint**: `PUT /api/admin/waitlist/{id}`
+**Endpoint**: `PUT /api/waitlist/admin/{id}`
 
 **Request**:
 ```json
 {
   "companyName": "Updated Company",
-  "notes": "Internal notes",
-  "status": "Pending"
+  "notes": "Internal notes"
 }
 ```
 
@@ -203,18 +199,12 @@ The implementation follows a 4-layer architecture:
 - Updates only provided fields
 
 #### 8. Delete Waitlist (Admin)
-**Endpoint**: `DELETE /api/admin/waitlist/{id}`
+**Endpoint**: `DELETE /api/waitlist/admin/{id}`
 
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Waitlist entry deleted successfully"
-}
-```
+**Response**: 204 No Content with no response body.
 
 #### 9. Get Analytics (Admin)
-**Endpoint**: `GET /api/admin/waitlist/analytics`
+**Endpoint**: `GET /api/waitlist/admin/analytics`
 
 **Response**:
 ```json
@@ -365,7 +355,7 @@ curl -X GET "http://localhost:5000/api/waitlist/status?email=test@example.com"
 
 4. **Admin List** (requires authentication):
 ```bash
-curl -X GET "http://localhost:5000/api/admin/waitlist/list" \
+curl -X GET "http://localhost:5000/api/waitlist/admin/list" \
   -H "Authorization: Bearer <jwt_token>"
 ```
 

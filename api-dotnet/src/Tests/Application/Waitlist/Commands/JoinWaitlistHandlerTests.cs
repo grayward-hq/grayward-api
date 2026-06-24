@@ -132,12 +132,17 @@ public class JoinWaitlistHandlerTests
     {
         // Arrange
         var cmd = new JoinWaitlistCommand("test@example.com");
+        WaitlistEntity? addedEntry = null;
+
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((WaitlistEntity?)null);
         _mockUserManager.Setup(um => um.FindByEmailAsync(It.IsAny<string>()))
             .ReturnsAsync((UserEntity?)null);
         _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1L);
+        _mockWaitlistRepo.Setup(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<WaitlistEntity, CancellationToken>((entry, _) => addedEntry = entry)
+            .Returns(Task.CompletedTask);
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ThrowsAsync(new Exception("Email service error"));
 
@@ -148,9 +153,11 @@ public class JoinWaitlistHandlerTests
         Assert.False(result.IsSuccess);
         Assert.NotNull(result.Error);
         Assert.Equal(ErrorCode.Validation, result.Error.Code);
+        Assert.NotNull(addedEntry);
 
-        _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
-        _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.Remove(addedEntry!), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     private static Mock<UserManager<UserEntity>> MockUserManager()

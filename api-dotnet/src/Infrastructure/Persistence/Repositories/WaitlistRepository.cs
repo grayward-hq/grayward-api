@@ -2,12 +2,14 @@ using Application.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Infrastructure.Persistence.Repositories;
 
 public class WaitlistRepository : IWaitlistRepository
 {
     private readonly VulnWatchDbContext _context;
+    private IDbContextTransaction? _positionTransaction;
 
     public WaitlistRepository(VulnWatchDbContext context)
     {
@@ -31,13 +33,36 @@ public class WaitlistRepository : IWaitlistRepository
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+
+            if (_positionTransaction is not null)
+            {
+                await _positionTransaction.CommitAsync(ct);
+                await _positionTransaction.DisposeAsync();
+                _positionTransaction = null;
+            }
+        }
+        catch
+        {
+            if (_positionTransaction is not null)
+            {
+                await _positionTransaction.RollbackAsync(CancellationToken.None);
+                await _positionTransaction.DisposeAsync();
+                _positionTransaction = null;
+            }
+
+            throw;
+        }
     }
 
     public async Task<Waitlist?> FindByEmail(string email, CancellationToken ct)
     {
+        var normalizedEmail = email.ToLowerInvariant();
+
         return await _context.Waitlists
-            .FirstOrDefaultAsync(w => w.Email.ToLower() == email.ToLower(), ct);
+            .FirstOrDefaultAsync(w => w.Email == normalizedEmail, ct);
     }
 
     public async Task<Waitlist?> GetById(Guid id, CancellationToken ct)
@@ -47,6 +72,18 @@ public class WaitlistRepository : IWaitlistRepository
 
     public async Task<long> GetNextPosition(CancellationToken ct)
     {
+        if (_context.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            if (_context.Database.CurrentTransaction is null && _positionTransaction is null)
+            {
+                _positionTransaction = await _context.Database.BeginTransactionAsync(ct);
+            }
+
+            await _context.Database.ExecuteSqlRawAsync(
+                "LOCK TABLE \"Waitlists\" IN EXCLUSIVE MODE",
+                ct);
+        }
+
         var maxPosition = await _context.Waitlists
             .MaxAsync(w => (long?)w.Position, ct) ?? 0;
         return maxPosition + 1;
@@ -82,8 +119,7 @@ public class WaitlistRepository : IWaitlistRepository
 
         if (!string.IsNullOrWhiteSpace(searchEmail))
         {
-            var lowerSearch = searchEmail.ToLower();
-            query = query.Where(w => w.Email.ToLower().Contains(lowerSearch));
+            query = query.Where(w => EF.Functions.ILike(w.Email, $"%{searchEmail}%"));
         }
 
         // Apply sorting
@@ -154,8 +190,10 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
 
     public async Task<bool> ExistsByEmail(string email, CancellationToken ct)
     {
+        var normalizedEmail = email.ToLowerInvariant();
+
         return await _context.Waitlists
-            .AnyAsync(w => w.Email.ToLower() == email.ToLower(), ct);
+            .AnyAsync(w => w.Email == normalizedEmail, ct);
     }
 
     public async Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct)
@@ -168,7 +206,7 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
     {
         var isAsc = sortOrder.Equals("asc", StringComparison.OrdinalIgnoreCase);
 
-        return sortBy.ToLower() switch
+        return sortBy.ToLowerInvariant() switch
         {
             "position" => isAsc ? query.OrderBy(w => w.Position) : query.OrderByDescending(w => w.Position),
             "email" => isAsc ? query.OrderBy(w => w.Email) : query.OrderByDescending(w => w.Email),

@@ -25,7 +25,7 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
 
     public async Task<Result<MessageResponse>> Handle(VerifyWaitlistEmailCommand cmd, CancellationToken ct)
     {
-        var entry = await _waitlistRepo.FindByEmail(cmd.Email.ToLower(), ct);
+        var entry = await _waitlistRepo.FindByEmail(cmd.Email.ToLowerInvariant(), ct);
         
         if (entry is null)
         {

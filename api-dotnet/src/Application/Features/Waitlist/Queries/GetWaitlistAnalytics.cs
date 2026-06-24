@@ -35,7 +35,9 @@ public class GetWaitlistAnalyticsHandler : IRequestHandler<GetWaitlistAnalyticsQ
 
         var averageDaysToPromotion = await _waitlistRepo.GetAverageDaysToPromotion(ct);
 
-        var topCompanies = await _waitlistRepo.GetTopCompanies(ct, limit: 10);
+        var topCompanies = (await _waitlistRepo.GetTopCompanies(ct, limit: 10))
+            .Select(company => new TopCompanyDto(company.Company, company.Count))
+            .ToList();
 
         _logger.LogInformation("Waitlist analytics retrieved: {total} total, {promoted} promoted, {cancelled} cancelled", 
             totalOnWaitlist, promotedCount, cancelledCount);

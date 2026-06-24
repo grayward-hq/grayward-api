@@ -33,6 +33,8 @@ public record WaitlistListItemDto(
     string? Comments,
     string? Notes);
 
+public record UpdateWaitlistRequest(string? CompanyName = null, string? Notes = null);
+
 public record WaitlistAnalyticsDto(
     int TotalOnWaitlist,
     int PendingCount,
@@ -42,7 +44,9 @@ public record WaitlistAnalyticsDto(
     decimal PromotionRate,
     decimal CancellationRate,
     double AverageDaysToPromotion,
-    List<(string Company, int Count)> TopCompanies);
+    List<TopCompanyDto> TopCompanies);
+
+public record TopCompanyDto(string Company, int Count);
 
 public record PromoteWaitlistResponse(
     Guid WaitlistId,

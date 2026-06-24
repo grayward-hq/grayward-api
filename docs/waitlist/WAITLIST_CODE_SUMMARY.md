@@ -144,8 +144,8 @@ public record VerifyWaitlistEmailRequest(string Email, string Token);
 
 **GetWaitlistStatus.cs**:
 - Public endpoint
-- Case-insensitive email lookup
-- Returns position and total count
+- Normalizes email casing
+- Returns a generic non-enumerable status response and total count
 
 **GetWaitlistList.cs**:
 - Admin endpoint
@@ -213,11 +213,11 @@ public async Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct
 | GET | /api/waitlist/status | Public | Yes | Check position |
 | GET | /api/waitlist/verify | Public | Yes | Verify email |
 | POST | /api/waitlist/cancel | Public | Yes | Cancel waitlist |
-| GET | /api/admin/waitlist/list | Admin | Yes | List entries |
-| POST | /api/admin/waitlist/{id}/promote | Admin | Yes | Promote to user |
-| PUT | /api/admin/waitlist/{id} | Admin | Yes | Update entry |
-| DELETE | /api/admin/waitlist/{id} | Admin | Yes | Delete entry |
-| GET | /api/admin/waitlist/analytics | Admin | Yes | Get metrics |
+| GET | /api/waitlist/admin/list | Admin | Yes | List entries |
+| POST | /api/waitlist/admin/{id}/promote | Admin | Yes | Promote to user |
+| PUT | /api/waitlist/admin/{id} | Admin | Yes | Update entry |
+| DELETE | /api/waitlist/admin/{id} | Admin | Yes | Delete entry; returns 204 No Content |
+| GET | /api/waitlist/admin/analytics | Admin | Yes | Get metrics |
 
 ---
 
@@ -247,10 +247,10 @@ public async Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct
 #### 2. `src/Tests/Application/Waitlist/Queries/`
 
 **GetWaitlistStatusHandlerTests.cs**:
-- Valid email lookup
-- Non-existent email handling
-- Case-insensitive search
-- All status types
+- Generic response for any email
+- Non-existent email returns generic success
+- Email normalization
+- Stored status is not revealed
 
 ---
 

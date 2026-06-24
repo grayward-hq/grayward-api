@@ -43,7 +43,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
     public async Task<Result<WaitlistResponse>> Handle(JoinWaitlistCommand cmd, CancellationToken ct)
     {
-        var normalizedEmail = cmd.Email.ToLower();
+        var normalizedEmail = cmd.Email.ToLowerInvariant();
 
         var genericSuccessResponse = new WaitlistResponse(
             normalizedEmail,
@@ -69,35 +69,58 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
 
-        // Get next position
         var position = await _waitlistRepo.GetNextPosition(ct);
 
-        // Create waitlist entry in memory
         var entry = WaitlistEntity.Create(normalizedEmail, cmd.CompanyName, position, cmd.Comments);
 
-        // Generate confirmation token
         var confirmationToken = GenerateToken();
         entry.GenerateEmailConfirmationToken(confirmationToken);
 
-        // 1. Send the confirmation email FIRST
         try
         {
-            var confirmLink = BuildConfirmationLink(cmd.Email, confirmationToken);
-            await SendConfirmationEmail(cmd.Email, position, confirmLink);
+            await _waitlistRepo.AddAsync(entry, ct);
+            await _waitlistRepo.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            var constraintName = GetConstraintName(ex);
+            _logger.LogInformation(
+                ex,
+                "Waitlist join hit unique constraint {constraintName} for {email}.",
+                constraintName,
+                cmd.Email);
+
+            if (constraintName == "IX_Waitlists_Position")
+            {
+                return Result<WaitlistResponse>.Failure(
+                    Error.Validation("Could not assign waitlist position. Please try again."));
+            }
+
+            return Result<WaitlistResponse>.Success(genericSuccessResponse);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to save waitlist entry for {email}.", cmd.Email);
+            return Result<WaitlistResponse>.Failure(
+                Error.Validation("Could not join waitlist. Please try again."));
+        }
+
+        try
+        {
+            var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
+            await SendConfirmationEmail(normalizedEmail, position, confirmLink);
             _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send confirmation email to {email}. Aborting registration.", cmd.Email);
-            
-            // Return failure immediately — nothing was saved to the DB, so the user isn't stuck
+
+            _waitlistRepo.Remove(entry);
+            await _waitlistRepo.SaveChangesAsync(ct);
+
             return Result<WaitlistResponse>.Failure(
                 Error.Validation("Could not send confirmation email. Please verify your address and try again."));
         }
-
-        // 2. Save to the database ONLY if the email was successfully sent
-        await _waitlistRepo.AddAsync(entry, ct);
-        await _waitlistRepo.SaveChangesAsync(ct);
 
         return Result<WaitlistResponse>.Success(
             new WaitlistResponse(
@@ -172,5 +195,25 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         </div>
     </body>
     </html>";
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        var inner = ex.InnerException;
+        if (inner?.GetType().FullName != "Npgsql.PostgresException") return false;
+
+        return inner.GetType()
+            .GetProperty("SqlState")?
+            .GetValue(inner) as string == "23505";
+    }
+
+    private static string? GetConstraintName(DbUpdateException ex)
+    {
+        var inner = ex.InnerException;
+        if (inner?.GetType().FullName != "Npgsql.PostgresException") return null;
+
+        return inner.GetType()
+            .GetProperty("ConstraintName")?
+            .GetValue(inner) as string;
     }
 }

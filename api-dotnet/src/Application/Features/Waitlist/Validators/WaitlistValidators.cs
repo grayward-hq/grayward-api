@@ -31,6 +31,7 @@ public class VerifyWaitlistEmailValidator : AbstractValidator<VerifyWaitlistEmai
     {
         RuleFor(x => x.Email)
             .NotEmpty()
+            .MaximumLength(254)
             .EmailAddress()
             .WithMessage("Invalid email format.");
 
@@ -47,6 +48,7 @@ public class CancelWaitlistValidator : AbstractValidator<CancelWaitlistRequest>
     {
         RuleFor(x => x.Email)
             .NotEmpty()
+            .MaximumLength(254)
             .EmailAddress()
             .WithMessage("Invalid email format.");
 

@@ -172,6 +172,8 @@ void UpdatePosition(long newPosition)
     "email": "user@company.com",
     "position": 1523,
     "status": "Pending",
+    "emailConfirmed": false,
+    "emailConfirmedAt": null,
     "createdAt": "2026-06-18T10:30:00Z"
   }
 }
@@ -442,10 +444,12 @@ POST /api/waitlist/admin/{waitlistId}/promote?firstName=John&lastName=Doe&sendIn
 ```json
 {
   "companyName": "Updated Company Name",
-  "notes": "Admin notes about this user",
-  "status": "Cancelled"
+  "notes": "Admin notes about this user"
 }
 ```
+
+**Query Parameters:**
+- `status` (optional) - Status transition to apply, e.g. `?status=Cancelled`
 
 **Response (200 OK):**
 ```json

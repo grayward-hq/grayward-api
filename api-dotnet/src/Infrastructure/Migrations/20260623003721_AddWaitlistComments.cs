@@ -77,6 +77,16 @@ namespace Infrastructure.Migrations
                 nullable: false,
                 defaultValue: 0L);
 
+            migrationBuilder.Sql("""
+                UPDATE "Waitlists" AS w
+                SET "Position" = ranked."Position"
+                FROM (
+                    SELECT "Id", ROW_NUMBER() OVER (ORDER BY "CreatedAt", "Id") AS "Position"
+                    FROM "Waitlists"
+                ) AS ranked
+                WHERE w."Id" = ranked."Id";
+                """);
+
             migrationBuilder.AddColumn<DateTime>(
                 name: "PromotedAt",
                 table: "Waitlists",

@@ -86,10 +86,10 @@ dotnet test --filter "Waitlist"
   - [ ] Handle_CaseInsensitiveEmail passes
 
 - [ ] GetWaitlistStatusHandlerTests
-  - [ ] Handle_WithValidEmail_ReturnsStatus passes
-  - [ ] Handle_WithNonExistentEmail_ReturnsNotFound passes
-  - [ ] Handle_CaseInsensitiveSearch passes
-  - [ ] All status types return correct status passes
+  - [ ] Handle_WithAnyEmail_ReturnsGenericStatus passes
+  - [ ] Handle_WithNonExistentEmail_ReturnsGenericSuccess passes
+  - [ ] Handle_NormalizesEmail passes
+  - [ ] Handle_DoesNotRevealStoredStatus passes
 
 - [ ] PromoteWaitlistHandlerTests
   - [ ] Handle_WithConfirmedWaitlist_ConfirmsUserEmailAndSendsPasswordSetupInvite passes
@@ -125,12 +125,12 @@ curl "http://localhost:5000/api/waitlist/status?email=test@example.com"
 ```
 
 Expected: 200 OK with WaitlistStatusResponse
-- [ ] Returns current position
+- [ ] Returns generic position value without revealing membership
 - [ ] Returns total count of waitlist
-- [ ] Returns correct status
-- [ ] Case-insensitive email lookup works
+- [ ] Returns generic Pending status without revealing stored status
+- [ ] Email normalization works
   - [ ] Join with `Test@Example.com`, then query `GET /api/waitlist/status?email=test@example.com`
-  - [ ] Response returns the same waitlist entry with normalized email `test@example.com`
+  - [ ] Response returns normalized email `test@example.com` without revealing whether the entry exists
 
 ### Endpoint: GET /api/waitlist/verify
 

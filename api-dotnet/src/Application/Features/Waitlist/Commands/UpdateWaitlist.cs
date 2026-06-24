@@ -64,6 +64,11 @@ public class UpdateWaitlistHandler : IRequestHandler<UpdateWaitlistCommand, Resu
             {
                 entry.MarkCancelled();
             }
+            else
+            {
+                return Result<WaitlistListItemDto>.Failure(
+                    Error.Validation($"Unsupported waitlist status transition to {cmd.Status.Value}"));
+            }
         }
 
         _waitlistRepo.Update(entry);
