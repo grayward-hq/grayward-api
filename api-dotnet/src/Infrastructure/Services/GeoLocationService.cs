@@ -19,15 +19,16 @@ public sealed class GeoLocationService(
         if (string.IsNullOrWhiteSpace(ipAddress) || _privateRanges.Contains(ipAddress))
             return null;
 
-        // Skip private RFC-1918 ranges
-        if (IPAddress.TryParse(ipAddress, out var parsed) && IsPrivateIp(parsed))
+        // Reject non-IPs and reserved ranges immediately
+        if (!IPAddress.TryParse(ipAddress, out var parsed)
+            || IPAddress.IsLoopback(parsed)
+            || IsPrivateIp(parsed))
             return null;
 
         try
         {
-            // fields param limits the response payload
             var response = await httpClient.GetFromJsonAsync<IpApiResponse>(
-                $"http://ip-api.com/json/{ipAddress}?fields=status,city,regionName,country,countryCode",
+                $"json/{ipAddress}?fields=status,city,regionName,country,countryCode",
                 ct);
 
             if (response is null || response.Status != "success")

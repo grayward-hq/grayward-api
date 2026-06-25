@@ -306,10 +306,22 @@ builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 });
+
+var geoIpBase = builder.Configuration["GeoIp:BaseUrl"]
+    ?? throw new InvalidOperationException("GeoIp:BaseUrl is not configured.");
+var geoIpTimeout = int.TryParse(builder.Configuration["GeoIp:TimeoutSeconds"], out var t) ? t : 3;
+
 builder.Services.AddHttpClient<IGeoLocationService, GeoLocationService>(client =>
 {
-    client.BaseAddress = new Uri("http://ip-api.com");
-    client.Timeout = TimeSpan.FromSeconds(3);
+    client.BaseAddress = new Uri(geoIpBase);
+    client.Timeout = TimeSpan.FromSeconds(geoIpTimeout);
+});
+
+builder.Services.AddMemoryCache(options =>
+{
+    // so the cache doesn't grow unbounded
+    // Each GeoIP entry has Size = 1, so this allows up to 10 000 IPs in-process
+    options.SizeLimit = 10_000;
 });
 
 QuestPDF.Settings.License = LicenseType.Community;
