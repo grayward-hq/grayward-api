@@ -42,7 +42,7 @@ public class CancelWaitlistHandler : IRequestHandler<CancelWaitlistCommand, Resu
         {
             _logger.LogWarning("Cancellation attempted for non-existent email: {email}", cmd.Email);
             return Result<MessageResponse>.Failure(
-                Error.NotFound("Email not found on waitlist"));
+                Error.Unauthorized("Invalid or expired cancellation token"));
         }
 
         // Proof-of-possession check: the caller must present a signed token

@@ -1,4 +1,5 @@
 using Application.Features.Waitlist.DTOs;
+using Application.Features.Waitlist.Commands;
 using FluentValidation;
 
 namespace Application.Features.Waitlist.Validators;
@@ -55,5 +56,17 @@ public class CancelWaitlistValidator : AbstractValidator<CancelWaitlistRequest>
         RuleFor(x => x.Token)
             .NotEmpty()
             .WithMessage("Cancellation token is required.");
+    }
+}
+
+public class RequestWaitlistCancellationValidator : AbstractValidator<RequestWaitlistCancellationCommand>
+{
+    public RequestWaitlistCancellationValidator()
+    {
+        RuleFor(x => x.Email)
+            .NotEmpty()
+            .MaximumLength(254)
+            .EmailAddress()
+            .WithMessage("Invalid email format.");
     }
 }

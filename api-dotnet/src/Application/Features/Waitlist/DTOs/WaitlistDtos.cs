@@ -57,4 +57,6 @@ public record PromoteWaitlistResponse(
 
 public record CancelWaitlistRequest(string Email, string Token);
 
+public record RequestWaitlistCancellationRequest(string Email);
+
 public record VerifyWaitlistEmailRequest(string Email, string Token);

@@ -18,6 +18,7 @@ public class JoinWaitlistHandlerTests
     private readonly Mock<IWaitlistRepository> _mockWaitlistRepo;
     private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<IConfiguration> _mockConfig;
+    private readonly Mock<IWaitlistCancellationTokenService> _mockCancellationTokenService;
     private readonly Mock<UserManager<UserEntity>> _mockUserManager;
     private readonly Mock<ILogger<JoinWaitlistHandler>> _mockLogger;
     private readonly JoinWaitlistHandler _handler;
@@ -27,15 +28,21 @@ public class JoinWaitlistHandlerTests
         _mockWaitlistRepo = new Mock<IWaitlistRepository>();
         _mockEmailService = new Mock<IEmailService>();
         _mockConfig = new Mock<IConfiguration>();
+        _mockCancellationTokenService = new Mock<IWaitlistCancellationTokenService>();
         _mockUserManager = MockUserManager();
         _mockLogger = new Mock<ILogger<JoinWaitlistHandler>>();
 
         _mockConfig.Setup(c => c["FrontendUrl:WaitlistVerify"]).Returns("http://localhost:3000/verify");
+        _mockConfig.Setup(c => c["FrontendUrl:WaitlistCancel"]).Returns("http://localhost:3000/waitlist/cancel");
+        _mockCancellationTokenService
+            .Setup(s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()))
+            .Returns("cancel-token");
 
         _handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object,
             _mockEmailService.Object,
             _mockConfig.Object,
+            _mockCancellationTokenService.Object,
             _mockUserManager.Object,
             _mockLogger.Object);
     }
@@ -75,7 +82,14 @@ public class JoinWaitlistHandlerTests
 
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _mockEmailService.Verify(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        _mockCancellationTokenService.Verify(
+            s => s.GenerateToken(addedEntry.Id, "test@example.com"),
+            Times.Once);
+        _mockEmailService.Verify(es => es.SendAsync(
+            "test@example.com",
+            "Confirm Your Email - Vulnwatch Waitlist",
+            It.Is<string>(body => body.Contains("http://localhost:3000/waitlist/cancel/?email=test%40example.com&token=cancel-token"))),
+            Times.Once);
     }
 
     [Fact]

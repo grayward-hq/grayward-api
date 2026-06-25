@@ -22,6 +22,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     private readonly IWaitlistRepository _waitlistRepo;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
+    private readonly IWaitlistCancellationTokenService _cancellationTokenService;
     private readonly UserManager<User> _userManager;
     private readonly ILogger<JoinWaitlistHandler> _logger;
 
@@ -29,12 +30,14 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         IWaitlistRepository waitlistRepo,
         IEmailService emailService,
         IConfiguration config,
+        IWaitlistCancellationTokenService cancellationTokenService,
         UserManager<User> userManager,
         ILogger<JoinWaitlistHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
         _emailService = emailService;
         _config = config;
+        _cancellationTokenService = cancellationTokenService;
         _userManager = userManager;
         _logger = logger;
     }
@@ -108,7 +111,10 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         try
         {
             var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
-            await SendConfirmationEmail(normalizedEmail, position, confirmLink);
+            var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
+            var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
+
+            await SendConfirmationEmail(normalizedEmail, position, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
         }
         catch (Exception ex)
@@ -147,16 +153,22 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     private string BuildConfirmationLink(string email, string token)
     {
         var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={token}";
+        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
-    private async Task SendConfirmationEmail(string email, long position, string confirmLink)
+    private string BuildCancellationLink(string email, string token)
     {
-        var body = BuildConfirmationEmailBody(email, position, confirmLink);
+        var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
+        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+    }
+
+    private async Task SendConfirmationEmail(string email, long position, string confirmLink, string cancellationLink)
+    {
+        var body = BuildConfirmationEmailBody(email, position, confirmLink, cancellationLink);
         await _emailService.SendAsync(email, "Confirm Your Email - Vulnwatch Waitlist", body);
     }
 
-    private string BuildConfirmationEmailBody(string email, long position, string confirmLink)
+    private string BuildConfirmationEmailBody(string email, long position, string confirmLink, string cancellationLink)
     {
         return $@"
     <!DOCTYPE html>
@@ -191,6 +203,11 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
             <p style='font-size: 12px; color: #999; margin-top: 40px;'>
                 This confirmation link can be used until your email is confirmed.
+            </p>
+
+            <p style='font-size: 12px; color: #999; margin-top: 24px;'>
+                If you no longer want to stay on the waitlist, you can remove your spot here:<br>
+                <a href='{cancellationLink}' style='color: #777;'>Cancel waitlist spot</a>
             </p>
         </div>
     </body>
