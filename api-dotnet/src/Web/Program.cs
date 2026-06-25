@@ -306,6 +306,11 @@ builder.Services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
     client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 });
+builder.Services.AddHttpClient<IGeoLocationService, GeoLocationService>(client =>
+{
+    client.BaseAddress = new Uri("http://ip-api.com");
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
 
 QuestPDF.Settings.License = LicenseType.Community;
         
