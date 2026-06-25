@@ -1,9 +1,16 @@
 namespace Application.Features.Auth.DTOs;
 
+public record LocationDto(
+    string? City,
+    string? Region,
+    string? Country,
+    string? CountryCode);
+
 public record SessionDto(
-    Guid SessionId,       // the RefreshToken row Id
+    Guid SessionId,
     string DeviceName,
     string? IpAddress,
+    LocationDto? Location, 
     DateTime CreatedAt,
     DateTime LastUsedAt,
     DateTime ExpiresAt,
