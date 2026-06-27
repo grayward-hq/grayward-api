@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Builder;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.RateLimiting;
+using Tests.Infrastructure.Services;
 
 namespace Tests.Integration;
 
@@ -53,6 +54,12 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 
             services.RemoveAll<IEmailService>();
             services.AddSingleton<IEmailService, NoOpEmailService>();
+
+            services.RemoveAll<IQuotaService>();
+            services.RemoveAll<IScanJobFactory>();
+
+            services.AddScoped<IQuotaService, FakeQuotaService>();
+            services.AddScoped<IScanJobFactory, FakeScanJobFactory>();
 
             services.RemoveAll<IConfigureOptions<RateLimiterOptions>>();
 
