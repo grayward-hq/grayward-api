@@ -405,15 +405,36 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.Property(w => w.Notes)
                 .IsRequired(false);
 
+            e.Property(w => w.ReferralCode)
+                .IsRequired()
+                .HasMaxLength(32)
+                .UseCollation("case_insensitive");
+
+            e.Property(w => w.ReferralCount)
+                .HasDefaultValue(0);
+
+            e.Property(w => w.ReferredByWaitlistId)
+                .IsRequired(false);
+
             // Indexes
             e.HasIndex(w => w.Email)
                 .IsUnique()
                 .HasDatabaseName("IX_Waitlists_Email")
                 .UseCollation("case_insensitive");
+            e.HasIndex(w => w.ReferralCode)
+                .IsUnique()
+                .HasDatabaseName("IX_Waitlists_ReferralCode")
+                .UseCollation("case_insensitive");
             e.HasIndex(w => w.Status).HasDatabaseName("IX_Waitlists_Status");
             e.HasIndex(w => w.Position).IsUnique().HasDatabaseName("IX_Waitlists_Position");
             e.HasIndex(w => w.CreatedAt).HasDatabaseName("IX_Waitlists_CreatedAt");
             e.HasIndex(w => w.PromotedUserId).HasDatabaseName("IX_Waitlists_PromotedUserId");
+            e.HasIndex(w => w.ReferredByWaitlistId).HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");
+
+            e.HasOne<Waitlist>()
+                .WithMany()
+                .HasForeignKey(w => w.ReferredByWaitlistId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             e.ToTable("Waitlists");
         });

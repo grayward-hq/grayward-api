@@ -2,7 +2,11 @@ using Domain.Enums;
 
 namespace Application.Features.Waitlist.DTOs;
 
-public record JoinWaitlistRequest(string Email, string? CompanyName = null, string? Comments = null);
+public record JoinWaitlistRequest(
+    string Email,
+    string? CompanyName = null,
+    string? Comments = null,
+    string? ReferralCode = null);
 
 public record WaitlistResponse(
     string Email,
@@ -10,7 +14,9 @@ public record WaitlistResponse(
     WaitlistStatus Status,
     DateTime CreatedAt,
     bool EmailConfirmed,
-    DateTime? EmailConfirmedAt = null);
+    DateTime? EmailConfirmedAt = null,
+    string? ReferralCode = null,
+    string? ReferralLink = null);
 
 public record WaitlistStatusResponse(
     string Email,
@@ -31,7 +37,11 @@ public record WaitlistListItemDto(
     DateTime? EmailConfirmedAt,
     DateTime? PromotedAt,
     string? Comments,
-    string? Notes);
+    string? Notes,
+    string? ReferralCode = null,
+    Guid? ReferredByWaitlistId = null,
+    int ReferralCount = 0,
+    DateTime? LastReferralAt = null);
 
 public record UpdateWaitlistRequest(string? CompanyName = null, string? Notes = null);
 

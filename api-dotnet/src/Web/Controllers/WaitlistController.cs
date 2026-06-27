@@ -43,7 +43,11 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new JoinWaitlistCommand(request.Email, request.CompanyName, request.Comments), ct);
+            new JoinWaitlistCommand(
+                request.Email,
+                request.CompanyName,
+                request.Comments,
+                request.ReferralCode), ct);
         return result.ToHttpResponse(this);
     }
 

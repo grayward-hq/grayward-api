@@ -61,7 +61,11 @@ public class GetWaitlistListHandler : IRequestHandler<GetWaitlistListQuery, Resu
             w.EmailConfirmedAt,
             w.PromotedAt,
             w.Comments,
-            w.Notes)).ToList();
+            w.Notes,
+            w.ReferralCode,
+            w.ReferredByWaitlistId,
+            w.ReferralCount,
+            w.LastReferralAt)).ToList();
 
         var http = _http.HttpContext;
         var pagedResult = PagedResult<WaitlistListItemDto>.From(

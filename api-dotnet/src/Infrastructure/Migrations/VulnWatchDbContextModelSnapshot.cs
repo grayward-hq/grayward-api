@@ -832,6 +832,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<DateTime?>("LastReferralAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -842,6 +845,19 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("PromotedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReferralCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("ReferralCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid?>("ReferredByWaitlistId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
@@ -869,6 +885,13 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PromotedUserId")
                         .HasDatabaseName("IX_Waitlists_PromotedUserId");
+
+                    b.HasIndex("ReferralCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_ReferralCode");
+
+                    b.HasIndex("ReferredByWaitlistId")
+                        .HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Waitlists_Status");
@@ -1161,6 +1184,14 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.Waitlist", b =>
+                {
+                    b.HasOne("Domain.Entities.Waitlist", null)
+                        .WithMany()
+                        .HasForeignKey("ReferredByWaitlistId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Domain.Entities.Remediation", b =>

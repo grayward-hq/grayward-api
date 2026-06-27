@@ -130,6 +130,7 @@ public interface IWaitlistRepository : IRepository<Waitlist>
 {
     // Queries
     Task<Waitlist?> FindByEmail(string email, CancellationToken ct);
+    Task<Waitlist?> FindByReferralCode(string referralCode, CancellationToken ct);
     Task<Waitlist?> GetById(Guid id, CancellationToken ct);
     Task<long> GetNextPosition(CancellationToken ct);
     Task<long> GetPositionByEmail(string email, CancellationToken ct);
@@ -153,4 +154,5 @@ public interface IWaitlistRepository : IRepository<Waitlist>
     // Utility
     Task<bool> ExistsByEmail(string email, CancellationToken ct);
     Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct);
+    Task<bool> ApplyReferralBump(Guid waitlistId, CancellationToken ct);
 }

@@ -16,10 +16,20 @@ public class Waitlist : EntityBase
     public Guid? PromotedUserId { get; private set; }
     public DateTime? PromotedAt { get; private set; }
     public string? Notes { get; private set; }
+    public string ReferralCode { get; private set; } = default!;
+    public Guid? ReferredByWaitlistId { get; private set; }
+    public int ReferralCount { get; private set; }
+    public DateTime? LastReferralAt { get; private set; }
 
     private Waitlist() { }
 
-    public static Waitlist Create(string email, string? companyName = null, long position = 0, string? comments = null)
+    public static Waitlist Create(
+        string email,
+        string? companyName = null,
+        long position = 0,
+        string? comments = null,
+        string? referralCode = null,
+        Guid? referredByWaitlistId = null)
         => new()
         {
             Email = email,
@@ -28,6 +38,9 @@ public class Waitlist : EntityBase
             Status = WaitlistStatus.Pending,
             Position = position,
             EmailConfirmed = false,
+            ReferralCode = referralCode ?? GenerateFallbackReferralCode(),
+            ReferredByWaitlistId = referredByWaitlistId,
+            ReferralCount = 0,
         };
 
     public void SetPosition(long position)
@@ -91,4 +104,20 @@ public class Waitlist : EntityBase
         CompanyName = companyName;
         Touch();
     }
+
+    public void MarkReferredBy(Guid waitlistId)
+    {
+        ReferredByWaitlistId = waitlistId;
+        Touch();
+    }
+
+    public void RecordReferral()
+    {
+        ReferralCount++;
+        LastReferralAt = DateTime.UtcNow;
+        Touch();
+    }
+
+    private static string GenerateFallbackReferralCode()
+        => Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
 }
