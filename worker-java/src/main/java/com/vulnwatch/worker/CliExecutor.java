@@ -56,7 +56,7 @@ public final class CliExecutor {
 
         } catch (IOException e) {
             throw new CliExecutionException(
-                    "Failed to start process: " + command.getFirst(), e);
+                    "Failed to start process: %s".formatted(command.getFirst()), e);
         }
 
         StringBuilder output = new StringBuilder();
@@ -92,7 +92,7 @@ public final class CliExecutor {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new CliExecutionException(
-                    "Interrupted while waiting for: " + command.getFirst(), e);
+                    "Interrupted while waiting for: %s".formatted(command.getFirst()), e);
         }
 
         String std = output.toString();
