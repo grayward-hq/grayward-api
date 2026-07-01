@@ -73,6 +73,12 @@ public class WaitlistRepository : IWaitlistRepository
             .FirstOrDefaultAsync(w => w.ReferralCode == normalizedReferralCode, ct);
     }
 
+    public async Task<Waitlist?> FindByPromotedUserId(Guid userId, CancellationToken ct)
+    {
+        return await _context.Waitlists
+            .FirstOrDefaultAsync(w => w.PromotedUserId == userId, ct);
+    }
+
     public async Task<Waitlist?> GetById(Guid id, CancellationToken ct)
     {
         return await _context.Waitlists.FirstOrDefaultAsync(w => w.Id == id, ct);
