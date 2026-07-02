@@ -65,7 +65,7 @@ class NmapTest {
 
     @Test
     void scan_success_returnsEngineResultWithFindings() throws Exception {
-        String expectedOutputFile = "%s/nmap-%s.json".formatted(TEMP_LOCATION, SCAN_ID);
+        String expectedOutputFile = "%s/%s-%s.json".formatted(TEMP_LOCATION, BINARY, SCAN_ID);
         Path expectedPath = Path.of(expectedOutputFile);
 
         List<NmapFindings> findings = List.of(mock(NmapFindings.class));
@@ -85,8 +85,12 @@ class NmapTest {
 
     @Test
     void scan_invokesCliExecutorWithCorrectCommand() throws Exception {
-        String expectedOutputFile = "%s/nmap-%s.json".formatted(TEMP_LOCATION, SCAN_ID);
-        List<String> expectedCommand = List.of(BINARY, "-oX", expectedOutputFile, DOMAIN);
+        String expectedOutputFile = "%s/%s-%s.json".formatted(TEMP_LOCATION, BINARY, SCAN_ID);
+        List<String> expectedCommand = List.of(
+                BINARY, "-oX", expectedOutputFile,
+                "-p", "22,25,445,3306,5432,6001-6003,8080",
+                "-T4", "-n", DOMAIN
+        );
 
         when(nmapParser.parse(any(File.class))).thenReturn(List.of());
 
@@ -96,15 +100,22 @@ class NmapTest {
     }
 
     @Test
-    void scan_invokesReadAndDeleteWithCorrectPath() throws Exception {
-        String expectedOutputFile = "%s/nmap-%s.json".formatted(TEMP_LOCATION, SCAN_ID);
+    void scan_parsesOutputFileAndCleansUpAfterward() throws Exception {
+        String expectedOutputFile = "%s/%s-%s.json".formatted(TEMP_LOCATION, BINARY, SCAN_ID);
         Path expectedPath = Path.of(expectedOutputFile);
 
         when(nmapParser.parse(any(File.class))).thenReturn(List.of());
 
         nmapEngine.scan(scanJob);
 
-        verify(cliExecutor).readAndDelete(expectedPath);
+        // NmapEngine (like every other scanner: Dns, Subdomain, Nuclei, Ssl,
+        // Trivy) parses the raw output file directly rather than going
+        // through CliExecutor.readAndDelete() — that method isn't used by
+        // any scanner in this codebase. Cleanup happens via deleteSilently
+        // in the finally block instead.
+        verify(nmapParser).parse(expectedPath.toFile());
+        verify(cliExecutor).deleteSilently(expectedPath);
+        verify(cliExecutor, never()).readAndDelete(any());
     }
 
     @Test
@@ -148,18 +159,20 @@ class NmapTest {
     }
 
     @Test
-    void scan_whenTimeoutOccurs_propagatesException() throws Exception {
-        doThrow(new TimeoutException("Timed out"))
+    void scan_whenTimeoutOccurs_propagatesExceptionAsCause() throws Exception {
+        TimeoutException timeout = new TimeoutException("Timed out");
+        doThrow(timeout)
                 .when(cliExecutor).run(anyList(), anyInt(), anyBoolean());
 
-        assertThrows(TimeoutException.class, () -> nmapEngine.scan(scanJob));
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> nmapEngine.scan(scanJob));
+        assertSame(timeout, thrown.getCause());
     }
 
     // --- surfaceType ---
 
     @Test
-    void surfaceType_returnsNull() {
-        assertNull(nmapEngine.surfaceType());
+    void surfaceType_returnsPorts() {
+        assertEquals(SurfaceType.PORTS, nmapEngine.surfaceType());
     }
 
     // --- Output file naming ---

@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 public class PromptBuilder {
 
     // Max characters of raw engine output to include in the prompt.
-    // 466k tokens was hitting gpt-4o-mini's 200k TPM limit.
     // At ~4 chars/token, 6000 chars ≈ 1500 tokens — well within any model's limits.
     private static final int MAX_RAW_CHARS = 6_000;
 
@@ -37,7 +36,7 @@ public class PromptBuilder {
 
     public String domainEnrichPrompt(ScanJob job, EngineResult result) {
         String findings = result.success()
-                ? truncate(String.valueOf(result.rawResult()), MAX_RAW_CHARS)
+                ? truncate(String.valueOf(result.rawResult()))
                 : "Engine failed: %s".formatted(result.errorMessage());
 
         return """
@@ -48,15 +47,14 @@ public class PromptBuilder {
             Technical findings:
             %s
 
-            Analyse these findings and return your assessment as JSON with these fields:
-            - title: a single concise sentence summarising the most significant finding
-            - severity: one of Critical, High, Medium, Low, Info
-            - explanation: concise technical explanation of the findings
-            - cveId: CVE identifier if applicable, otherwise null
-            - remediationSteps: list of actionable remediation steps
-            - certExpiry: if surface is SSL, extract the certificate expiry date as an
-              ISO-8601 string (e.g. "2026-01-01T00:00:00Z") from the findings, otherwise null
+            Analyse these findings and return your assessment as JSON with ONLY these fields:
+            - explanation: a concise technical explanation of what was found and why it matters
+            - remediationSteps: an ordered list of actionable steps to fix or mitigate the issues
+            - certExpiry: if the surface is SSL, extract the certificate expiry date as an
+              ISO-8601 string (e.g. "2026-01-01T00:00:00Z") from the findings; otherwise null
 
+            Important: do NOT include severity, title, or cveId — those are determined
+            directly from scanner output and must not be duplicated by the AI.
             Return only valid JSON, no markdown, no preamble.
             """.formatted(
                 job.domainName(),
@@ -75,8 +73,7 @@ public class PromptBuilder {
     }
 
     public String repositoryEnrichPrompt(List<String> dependencies) {
-        // Truncate the dependency list too — trivy output can also be very large
-        String depList = truncate(String.join("\n", dependencies), MAX_RAW_CHARS);
+        String depList = truncate(String.join("\n", dependencies));
         return """
                 Analyse the following dependencies for known vulnerabilities.
 
@@ -119,16 +116,12 @@ public class PromptBuilder {
         """.formatted(result.overallScore(), result.tier().getLabel(), categoryLines);
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
 
-    /**
-     * Truncates the raw engine output to avoid exceeding model token limits.
-     * Appends a note so the model knows the output was cut.
-     */
-    private static String truncate(String text, int maxChars) {
+
+    private static String truncate(String text) {
         if (text == null) return "";
-        if (text.length() <= maxChars) return text;
-        log.debug("Truncating engine output from {} to {} chars", text.length(), maxChars);
-        return text.substring(0, maxChars) + "\n... [truncated for brevity]";
+        if (text.length() <= PromptBuilder.MAX_RAW_CHARS) return text;
+        log.debug("Truncating engine output from {} to {} chars", text.length(), PromptBuilder.MAX_RAW_CHARS);
+        return "%s\n... [truncated for brevity]".formatted(text.substring(0, PromptBuilder.MAX_RAW_CHARS));
     }
 }
