@@ -42,13 +42,14 @@ public class RequestWaitlistCancellationHandler
         CancellationToken ct)
     {
         var normalizedEmail = cmd.Email.Trim().ToLowerInvariant();
+        var emailHash = HashEmail(normalizedEmail);
 
         var entry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
         if (entry is null)
         {
             _logger.LogInformation(
-                "Cancellation link request masked for non-existent waitlist email: {email}",
-                cmd.Email);
+                "Cancellation link request masked for non-existent email [{emailHash}]",
+                emailHash);
 
             return GenericSuccess();
         }
@@ -56,8 +57,8 @@ public class RequestWaitlistCancellationHandler
         if (entry.Status == WaitlistStatus.Cancelled || entry.Status == WaitlistStatus.Promoted)
         {
             _logger.LogInformation(
-                "Cancellation link request ignored for {email} with status {status}.",
-                normalizedEmail,
+                "Cancellation link request ignored for [{emailHash}] with status {status}.",
+                emailHash,
                 entry.Status);
 
             return GenericSuccess();
@@ -70,17 +71,26 @@ public class RequestWaitlistCancellationHandler
 
             await SendCancellationEmail(normalizedEmail, cancellationLink);
 
-            _logger.LogInformation("Cancellation link sent to waitlist email: {email}", normalizedEmail);
+            _logger.LogInformation("Cancellation link sent for [{emailHash}]", emailHash);
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Failed to send waitlist cancellation link to {email}. Returning masked response.",
-                normalizedEmail);
+                "Failed to send waitlist cancellation link for [{emailHash}]. Returning masked response.",
+                emailHash);
         }
 
         return GenericSuccess();
+    }
+
+    private static string HashEmail(string email)
+    {
+        using (var sha256 = System.Security.Cryptography.SHA256.Create())
+        {
+            var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(email));
+            return System.Convert.ToHexString(hashBytes)[..8]; // First 8 chars of hash
+        }
     }
 
     private Result<MessageResponse> GenericSuccess() =>
@@ -91,6 +101,7 @@ public class RequestWaitlistCancellationHandler
         var baseUrl = _config["FrontendUrl:WaitlistCancel"]
             ?? _config["FrontendUrl:Base"]
             ?? "http://localhost:3000";
+        baseUrl = baseUrl.TrimEnd('/');
 
         return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }

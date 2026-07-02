@@ -269,6 +269,8 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
 
             if (displacedEntry is null)
             {
+                // No entry at target position (gap in queue) - still move referrer up
+                referrer.SetPosition(targetPosition);
                 await _context.SaveChangesAsync(ct);
 
                 if (transaction is not null)

@@ -162,13 +162,24 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             try
             {
                 var bumped = await _waitlistRepo.ApplyReferralBump(referrer.Id, ct);
-                if (bumped)
+                if (!bumped)
                 {
-                    _logger.LogInformation(
-                        "Applied referral bump for {referrerEmail} after waitlist join by {email}",
+                    _logger.LogError(
+                        "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
                         referrer.Email,
                         normalizedEmail);
+
+                    _waitlistRepo.Remove(entry);
+                    await _waitlistRepo.SaveChangesAsync(ct);
+
+                    return Result<WaitlistResponse>.Failure(
+                        Error.Validation("Could not process referral. Please try again."));
                 }
+
+                _logger.LogInformation(
+                    "Applied referral bump for {referrerEmail} after waitlist join by {email}",
+                    referrer.Email,
+                    normalizedEmail);
             }
             catch (Exception ex)
             {
@@ -177,6 +188,12 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                     "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
                     referrer.Email,
                     normalizedEmail);
+
+                _waitlistRepo.Remove(entry);
+                await _waitlistRepo.SaveChangesAsync(ct);
+
+                return Result<WaitlistResponse>.Failure(
+                    Error.Validation("Could not process referral. Please try again."));
             }
         }
 
@@ -230,18 +247,21 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     private string BuildConfirmationLink(string email, string token)
     {
         var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
+        baseUrl = baseUrl.TrimEnd('/');
         return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildCancellationLink(string email, string token)
     {
         var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
+        baseUrl = baseUrl.TrimEnd('/');
         return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildReferralLink(string referralCode)
     {
         var baseUrl = _config["FrontendUrl:WaitlistJoin"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
+        baseUrl = baseUrl.TrimEnd('/');
         return $"{baseUrl}/?ref={Uri.EscapeDataString(referralCode)}";
     }
 

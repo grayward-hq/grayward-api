@@ -38,7 +38,9 @@ public class Waitlist : EntityBase
             Status = WaitlistStatus.Pending,
             Position = position,
             EmailConfirmed = false,
-            ReferralCode = referralCode ?? GenerateFallbackReferralCode(),
+            ReferralCode = string.IsNullOrWhiteSpace(referralCode) 
+                ? GenerateFallbackReferralCode() 
+                : referralCode.Trim().ToUpperInvariant(),
             ReferredByWaitlistId = referredByWaitlistId,
             ReferralCount = 0,
         };

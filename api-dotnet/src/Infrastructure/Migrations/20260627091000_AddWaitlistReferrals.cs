@@ -22,7 +22,8 @@ namespace Infrastructure.Migrations
                 table: "Waitlists",
                 type: "character varying(32)",
                 maxLength: 32,
-                nullable: true);
+                nullable: true,
+                collation: "case_insensitive");
 
             migrationBuilder.AddColumn<int>(
                 name: "ReferralCount",
@@ -49,6 +50,7 @@ namespace Infrastructure.Migrations
                 type: "character varying(32)",
                 maxLength: 32,
                 nullable: false,
+                collation: "case_insensitive",
                 oldClrType: typeof(string),
                 oldType: "character varying(32)",
                 oldMaxLength: 32,
@@ -58,7 +60,9 @@ namespace Infrastructure.Migrations
                 name: "IX_Waitlists_ReferralCode",
                 table: "Waitlists",
                 column: "ReferralCode",
-                unique: true);
+                unique: true)
+                .Annotation("Npgsql:IndexMethod", "btree")
+                .Annotation("Npgsql:IndexOperators", new[] { "text_pattern_ops" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Waitlists_ReferredByWaitlistId",
