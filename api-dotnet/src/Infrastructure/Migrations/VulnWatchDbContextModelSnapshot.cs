@@ -17,6 +17,7 @@ namespace Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasAnnotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-primary,und-u-ks-primary,icu,False")
                 .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -918,7 +919,8 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
-                        .HasColumnType("character varying(254)");
+                        .HasColumnType("character varying(254)")
+                        .UseCollation("case_insensitive");
 
                     b.Property<string>("EmailConfirmationToken")
                         .HasMaxLength(500)
@@ -954,7 +956,8 @@ namespace Infrastructure.Migrations
                     b.Property<string>("ReferralCode")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
+                        .HasColumnType("character varying(32)")
+                        .UseCollation("case_insensitive");
 
                     b.Property<int>("ReferralCount")
                         .ValueGeneratedOnAdd()
@@ -983,6 +986,8 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Waitlists_Email");
 
+                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("Email"), new[] { "case_insensitive" });
+
                     b.HasIndex("Position")
                         .IsUnique()
                         .HasDatabaseName("IX_Waitlists_Position");
@@ -993,6 +998,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ReferralCode")
                         .IsUnique()
                         .HasDatabaseName("IX_Waitlists_ReferralCode");
+
+                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("ReferralCode"), new[] { "case_insensitive" });
 
                     b.HasIndex("ReferredByWaitlistId")
                         .HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");
@@ -1290,14 +1297,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Domain.Entities.Waitlist", b =>
-                {
-                    b.HasOne("Domain.Entities.Waitlist", null)
-                        .WithMany()
-                        .HasForeignKey("ReferredByWaitlistId")
-                        .OnDelete(DeleteBehavior.SetNull);
-                });
-
             modelBuilder.Entity("Domain.Entities.Remediation", b =>
                 {
                     b.HasOne("Domain.Entities.Finding", "Finding")
@@ -1363,6 +1362,14 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Waitlist", b =>
+                {
+                    b.HasOne("Domain.Entities.Waitlist", null)
+                        .WithMany()
+                        .HasForeignKey("ReferredByWaitlistId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>

@@ -79,7 +79,7 @@ public class JoinWaitlistHandlerTests
         Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
         Assert.False(result.Value.EmailConfirmed);
         Assert.False(string.IsNullOrWhiteSpace(result.Value.ReferralCode));
-        Assert.Equal($"http://localhost:3000/waitlist/?ref={result.Value.ReferralCode}", result.Value.ReferralLink);
+        Assert.Equal($"http://localhost:3000/waitlist?ref={result.Value.ReferralCode}", result.Value.ReferralLink);
         Assert.NotNull(addedEntry);
         Assert.Equal(comments, addedEntry!.Comments);
 
@@ -91,7 +91,7 @@ public class JoinWaitlistHandlerTests
         _mockEmailService.Verify(es => es.SendAsync(
             "test@example.com",
             "Confirm Your Email - Vulnwatch Waitlist",
-            It.Is<string>(body => body.Contains("http://localhost:3000/waitlist/cancel/?email=test%40example.com&token=cancel-token"))),
+            It.Is<string>(body => body.Contains("http://localhost:3000/waitlist/cancel?email=test%40example.com&token=cancel-token"))),
             Times.Once);
     }
 

@@ -11,6 +11,10 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Define the case-insensitive ICU collation before any column references it.
+            migrationBuilder.AlterDatabase()
+                .Annotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-primary,und-u-ks-primary,icu,False");
+
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastReferralAt",
                 table: "Waitlists",
@@ -38,6 +42,7 @@ namespace Infrastructure.Migrations
                 type: "uuid",
                 nullable: true);
 
+            // Backfill referral codes for existing rows before enforcing NOT NULL.
             migrationBuilder.Sql("""
                 UPDATE "Waitlists"
                 SET "ReferralCode" = UPPER(REPLACE("Id"::text, '-', ''))
@@ -56,13 +61,35 @@ namespace Infrastructure.Migrations
                 oldMaxLength: 32,
                 oldNullable: true);
 
+            // Apply the case-insensitive collation to the existing Email column and its index.
+            migrationBuilder.DropIndex(
+                name: "IX_Waitlists_Email",
+                table: "Waitlists");
+
+            migrationBuilder.AlterColumn<string>(
+                name: "Email",
+                table: "Waitlists",
+                type: "character varying(254)",
+                maxLength: 254,
+                nullable: false,
+                collation: "case_insensitive",
+                oldClrType: typeof(string),
+                oldType: "character varying(254)",
+                oldMaxLength: 254);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Waitlists_Email",
+                table: "Waitlists",
+                column: "Email",
+                unique: true)
+                .Annotation("Relational:Collation", new[] { "case_insensitive" });
+
             migrationBuilder.CreateIndex(
                 name: "IX_Waitlists_ReferralCode",
                 table: "Waitlists",
                 column: "ReferralCode",
                 unique: true)
-                .Annotation("Npgsql:IndexMethod", "btree")
-                .Annotation("Npgsql:IndexOperators", new[] { "text_pattern_ops" });
+                .Annotation("Relational:Collation", new[] { "case_insensitive" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Waitlists_ReferredByWaitlistId",
@@ -93,6 +120,28 @@ namespace Infrastructure.Migrations
                 name: "IX_Waitlists_ReferredByWaitlistId",
                 table: "Waitlists");
 
+            // Revert the Email column collation and its index.
+            migrationBuilder.DropIndex(
+                name: "IX_Waitlists_Email",
+                table: "Waitlists");
+
+            migrationBuilder.AlterColumn<string>(
+                name: "Email",
+                table: "Waitlists",
+                type: "character varying(254)",
+                maxLength: 254,
+                nullable: false,
+                oldClrType: typeof(string),
+                oldType: "character varying(254)",
+                oldMaxLength: 254,
+                oldCollation: "case_insensitive");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Waitlists_Email",
+                table: "Waitlists",
+                column: "Email",
+                unique: true);
+
             migrationBuilder.DropColumn(
                 name: "LastReferralAt",
                 table: "Waitlists");
@@ -108,6 +157,9 @@ namespace Infrastructure.Migrations
             migrationBuilder.DropColumn(
                 name: "ReferredByWaitlistId",
                 table: "Waitlists");
+
+            migrationBuilder.AlterDatabase()
+                .OldAnnotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-primary,und-u-ks-primary,icu,False");
         }
     }
 }

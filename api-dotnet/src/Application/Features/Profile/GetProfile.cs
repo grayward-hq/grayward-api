@@ -66,6 +66,6 @@ public class GetProfileHandler(
     {
         var baseUrl = config["FrontendUrl:WaitlistJoin"] ?? config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?ref={Uri.EscapeDataString(referralCode)}";
+        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
     }
 }

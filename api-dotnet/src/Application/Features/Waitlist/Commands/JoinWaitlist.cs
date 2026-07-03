@@ -165,9 +165,9 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 if (!bumped)
                 {
                     _logger.LogError(
-                        "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
-                        referrer.Email,
-                        normalizedEmail);
+                        "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                        referrer.Id,
+                        entry.Id);
 
                     _waitlistRepo.Remove(entry);
                     await _waitlistRepo.SaveChangesAsync(ct);
@@ -177,17 +177,17 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 }
 
                 _logger.LogInformation(
-                    "Applied referral bump for {referrerEmail} after waitlist join by {email}",
-                    referrer.Email,
-                    normalizedEmail);
+                    "Applied referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                    referrer.Id,
+                    entry.Id);
             }
             catch (Exception ex)
             {
                 _logger.LogError(
                     ex,
-                    "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
-                    referrer.Email,
-                    normalizedEmail);
+                    "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                    referrer.Id,
+                    entry.Id);
 
                 _waitlistRepo.Remove(entry);
                 await _waitlistRepo.SaveChangesAsync(ct);
@@ -248,21 +248,21 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     {
         var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildCancellationLink(string email, string token)
     {
         var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildReferralLink(string referralCode)
     {
         var baseUrl = _config["FrontendUrl:WaitlistJoin"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?ref={Uri.EscapeDataString(referralCode)}";
+        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
     }
 
     private async Task SendConfirmationEmail(

@@ -70,7 +70,7 @@ public class RequestWaitlistCancellationHandlerTests
         _mockEmailService.Verify(es => es.SendAsync(
             email,
             "Cancel your Vulnwatch waitlist spot",
-            It.Is<string>(body => body.Contains("https://app.example.com/waitlist/cancel/?email=test%40example.com&token=cancel%20token"))),
+            It.Is<string>(body => body.Contains("https://app.example.com/waitlist/cancel?email=test%40example.com&token=cancel%20token"))),
             Times.Once);
     }
 

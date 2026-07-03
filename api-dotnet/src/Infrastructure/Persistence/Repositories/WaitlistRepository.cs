@@ -133,7 +133,11 @@ public class WaitlistRepository : IWaitlistRepository
 
         if (!string.IsNullOrWhiteSpace(searchEmail))
         {
-            query = query.Where(w => EF.Functions.ILike(w.Email, $"%{searchEmail}%"));
+            // Email uses the non-deterministic "case_insensitive" collation, and PostgreSQL
+            // does not support LIKE/ILIKE on non-deterministic collations. Force a deterministic
+            // collation for the pattern match.
+            query = query.Where(w => EF.Functions.ILike(
+                EF.Functions.Collate(w.Email, "default"), $"%{searchEmail}%"));
         }
 
         // Apply sorting

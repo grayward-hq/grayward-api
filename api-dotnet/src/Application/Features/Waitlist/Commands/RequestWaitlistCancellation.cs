@@ -103,7 +103,7 @@ public class RequestWaitlistCancellationHandler
             ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
 
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private async Task SendCancellationEmail(string email, string cancellationLink)
