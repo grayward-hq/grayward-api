@@ -65,6 +65,20 @@ public class WaitlistRepository : IWaitlistRepository
             .FirstOrDefaultAsync(w => w.Email == normalizedEmail, ct);
     }
 
+    public async Task<Waitlist?> FindByReferralCode(string referralCode, CancellationToken ct)
+    {
+        var normalizedReferralCode = referralCode.Trim().ToUpperInvariant();
+
+        return await _context.Waitlists
+            .FirstOrDefaultAsync(w => w.ReferralCode == normalizedReferralCode, ct);
+    }
+
+    public async Task<Waitlist?> FindByPromotedUserId(Guid userId, CancellationToken ct)
+    {
+        return await _context.Waitlists
+            .FirstOrDefaultAsync(w => w.PromotedUserId == userId, ct);
+    }
+
     public async Task<Waitlist?> GetById(Guid id, CancellationToken ct)
     {
         return await _context.Waitlists.FirstOrDefaultAsync(w => w.Id == id, ct);
@@ -119,7 +133,11 @@ public class WaitlistRepository : IWaitlistRepository
 
         if (!string.IsNullOrWhiteSpace(searchEmail))
         {
-            query = query.Where(w => EF.Functions.ILike(w.Email, $"%{searchEmail}%"));
+            // Email uses the non-deterministic "case_insensitive" collation, and PostgreSQL
+            // does not support LIKE/ILIKE on non-deterministic collations. Force a deterministic
+            // collation for the pattern match.
+            query = query.Where(w => EF.Functions.ILike(
+                EF.Functions.Collate(w.Email, "default"), $"%{searchEmail}%"));
         }
 
         // Apply sorting
@@ -200,6 +218,30 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
     {
         return await _context.Waitlists
             .AnyAsync(w => w.PromotedUserId == userId, ct);
+    }
+
+    public async Task<bool> ApplyReferralBump(Guid waitlistId, CancellationToken ct)
+    {
+        // A referral only affects the referrer's OWN row: decrement their referral ranking
+        // (floored at 1) and increment the referral count. No other entry is displaced, so the
+        // join-order Position is untouched. A single atomic UPDATE is correct under concurrent
+        // referrals to the same referrer and needs no table lock. Returns false (no rows) when
+        // the referrer no longer exists or has been cancelled/promoted.
+        var now = DateTime.UtcNow;
+
+        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Waitlists"
+            SET "ReferralPosition" = GREATEST("ReferralPosition" - 1, 1),
+                "ReferralCount" = "ReferralCount" + 1,
+                "LastReferralAt" = {now},
+                "UpdatedAt" = {now}
+            WHERE "Id" = {waitlistId}
+              AND "Status" NOT IN ('Cancelled', 'Promoted')
+            """,
+            ct);
+
+        return rowsAffected > 0;
     }
 
     private IQueryable<Waitlist> ApplySorting(IQueryable<Waitlist> query, string sortBy, string sortOrder)

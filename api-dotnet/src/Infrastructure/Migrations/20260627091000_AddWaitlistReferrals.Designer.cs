@@ -3,6 +3,7 @@ using System;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(VulnWatchDbContext))]
-    partial class VulnWatchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260627091000_AddWaitlistReferrals")]
+    partial class AddWaitlistReferrals
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -964,9 +967,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
-                    b.Property<long>("ReferralPosition")
-                        .HasColumnType("bigint");
-
                     b.Property<Guid?>("ReferredByWaitlistId")
                         .HasColumnType("uuid");
 
@@ -1003,9 +1003,6 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_Waitlists_ReferralCode");
 
                     NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("ReferralCode"), new[] { "case_insensitive" });
-
-                    b.HasIndex("ReferralPosition")
-                        .HasDatabaseName("IX_Waitlists_ReferralPosition");
 
                     b.HasIndex("ReferredByWaitlistId")
                         .HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");

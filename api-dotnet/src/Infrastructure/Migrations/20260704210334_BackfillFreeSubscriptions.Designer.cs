@@ -3,6 +3,7 @@ using System;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(VulnWatchDbContext))]
-    partial class VulnWatchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260704210334_BackfillFreeSubscriptions")]
+    partial class BackfillFreeSubscriptions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -938,9 +941,6 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<DateTime?>("LastReferralAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -951,23 +951,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("PromotedUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ReferralCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .UseCollation("case_insensitive");
-
-                    b.Property<int>("ReferralCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<long>("ReferralPosition")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid?>("ReferredByWaitlistId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
@@ -997,18 +980,6 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PromotedUserId")
                         .HasDatabaseName("IX_Waitlists_PromotedUserId");
-
-                    b.HasIndex("ReferralCode")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Waitlists_ReferralCode");
-
-                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("ReferralCode"), new[] { "case_insensitive" });
-
-                    b.HasIndex("ReferralPosition")
-                        .HasDatabaseName("IX_Waitlists_ReferralPosition");
-
-                    b.HasIndex("ReferredByWaitlistId")
-                        .HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("IX_Waitlists_Status");
@@ -1368,14 +1339,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Domain.Entities.Waitlist", b =>
-                {
-                    b.HasOne("Domain.Entities.Waitlist", null)
-                        .WithMany()
-                        .HasForeignKey("ReferredByWaitlistId")
-                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>

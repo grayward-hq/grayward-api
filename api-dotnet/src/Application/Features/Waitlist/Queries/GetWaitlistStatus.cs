@@ -25,18 +25,24 @@ public class GetWaitlistStatusHandler : IRequestHandler<GetWaitlistStatusQuery, 
 
     public async Task<Result<WaitlistStatusResponse>> Handle(GetWaitlistStatusQuery query, CancellationToken ct)
     {
-        var totalCount = await _waitlistRepo.GetTotalCount(ct);
-        var normalizedEmail = query.Email.ToLowerInvariant();
+        var entry = await _waitlistRepo.FindByEmail(query.Email, ct);
 
-        _logger.LogDebug("Waitlist status query masked for email: {email}", query.Email);
+        if (entry is null)
+        {
+            _logger.LogDebug("Waitlist status requested for email not on the waitlist");
+            return Result<WaitlistStatusResponse>.Failure(
+                Error.NotFound("Email not found on the waitlist"));
+        }
+
+        var totalCount = await _waitlistRepo.GetTotalCount(ct);
 
         return Result<WaitlistStatusResponse>.Success(
             new WaitlistStatusResponse(
-                normalizedEmail,
-                Position: 0,
+                entry.Email,
+                entry.Position,
                 totalCount,
-                WaitlistStatus.Pending,
-                EmailConfirmed: false,
-                JoinedAt: DateTime.UtcNow));
+                entry.Status,
+                entry.EmailConfirmed,
+                JoinedAt: entry.CreatedAt));
     }
 }
