@@ -16,46 +16,60 @@ public record RegisterCommand(string Email, string Password, string? FirstName =
 public class RegisterHandler(
     UserManager<User> userManager,
     INotificationPreferencesRepository notifPrefs,
+    IUserService userService,
     IEmailService email,
-    IConfiguration config) : IRequestHandler<RegisterCommand, Result<MessageResponse>>
+    IConfiguration config,
+    ILogger<RegisterHandler> logger) : IRequestHandler<RegisterCommand, Result<MessageResponse>>
 {
-
     public async Task<Result<MessageResponse>> Handle(RegisterCommand cmd, CancellationToken ct)
     {
-        var existing = await userManager.FindByEmailAsync(cmd.Email);
-        if (existing is not null)
-            return Result<MessageResponse>.Failure(Error.Conflict("Email is already registered."));
+        try
+        {
+            var existing = await userManager.FindByEmailAsync(cmd.Email);
+            if (existing is not null)
+                return Result<MessageResponse>.Failure(Error.Conflict("Email is already registered."));
 
-        var user = User.Create(cmd.Email, cmd.FirstName, cmd.LastName);
-        var result = await userManager.CreateAsync(user, cmd.Password);
+            var user = User.Create(cmd.Email, cmd.FirstName, cmd.LastName);
+            var result = await userManager.CreateAsync(user, cmd.Password);
 
-        if (!result.Succeeded)
-            return Result<MessageResponse>.Failure(Error.Validation(result.Errors.First().Description));
+            if (!result.Succeeded)
+                return Result<MessageResponse>.Failure(Error.Validation(result.Errors.First().Description));
 
-        await TryCreateDefaultPrefsAsync(user.Id, ct);
+            var provisionResult = await userService.ProvisionNewUser(user, ct);
 
-        var verificationToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            if (!provisionResult.IsSuccess)
+                return Result<MessageResponse>.Failure(provisionResult.Error!);
 
-        var encodedToken = WebUtility.UrlEncode(verificationToken);
+            var verificationToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
 
-        var baseUrl = !string.IsNullOrWhiteSpace(cmd.OriginUrl)
-            ? cmd.OriginUrl
-            : config["FrontendUrl:Verify"];
+            var encodedToken = WebUtility.UrlEncode(verificationToken);
+
+            var baseUrl = !string.IsNullOrWhiteSpace(cmd.OriginUrl)
+                ? cmd.OriginUrl
+                : config["FrontendUrl:Verify"];
 
 
-        var verificationLink = $"{baseUrl}/?userId={user.Id}&token={encodedToken}";
+            var verificationLink = $"{baseUrl}/?userId={user.Id}&token={encodedToken}";
 
-        // logger.LogInformation("VERIFICATION LINK: {link}", verificationLink);
+            // logger.LogInformation("VERIFICATION LINK: {link}", verificationLink);
 
-        var displayName = string.IsNullOrWhiteSpace(user.FirstName)
-            ? user.Email!
-            : user.FirstName;
+            var displayName = string.IsNullOrWhiteSpace(user.FirstName)
+                ? user.Email!
+                : user.FirstName;
 
-        var body = BuildVerificationEmailBody(displayName, verificationLink);
+            var body = BuildVerificationEmailBody(displayName, verificationLink);
 
-        await email.SendAsync(user.Email!, "Verify Your Email", body);
+            await email.SendAsync(user.Email!, "Verify Your Email", body);
 
-        return Result<MessageResponse>.Success(MessageResponse.Create("Registration successful. Verification link has been sent to your email."));
+            return Result<MessageResponse>.Success(MessageResponse.Create("Registration successful. Verification link has been sent to your email."));
+
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "User Registration Failed for {Email}", cmd.Email);
+            return Result<MessageResponse>.Failure(
+                Error.Internal("User registration failed. Please try again."));
+        }
     }
 
     private async Task TryCreateDefaultPrefsAsync(Guid userId, CancellationToken ct)
