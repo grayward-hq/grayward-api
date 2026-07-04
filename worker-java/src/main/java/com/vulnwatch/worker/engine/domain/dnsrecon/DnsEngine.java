@@ -47,7 +47,6 @@ public class DnsEngine implements Scanner {
     public EngineResult scan(ScanJob job) {
         String domain = job.domainName();
         String outputFileName = "%s/dnsrecon-%s.json".formatted(tempLocation,job.scanId());
-        System.out.println(outputFileName);
 
         Path outFile = Path.of(outputFileName);
 
@@ -55,8 +54,7 @@ public class DnsEngine implements Scanner {
                 binary,
                 "-d", domain,
                 "-t", "std",
-                "-a","-j",
-                outputFileName
+                "-j", outputFileName
         );
 
         try{
@@ -68,8 +66,8 @@ public class DnsEngine implements Scanner {
 
 
         }catch (IOException e){
-            log.error("Unable to parse file:"+ outFile);
-            return EngineResult.failure(SurfaceType.DNS, "Error processing: " + outputFileName);
+            log.error("Unable to parse file:%s".formatted(outFile));
+            return EngineResult.failure(SurfaceType.DNS, "Error processing: %s".formatted(outputFileName));
         } catch (Exception e){
             log.error(e.getMessage());
             throw new RuntimeException(e);

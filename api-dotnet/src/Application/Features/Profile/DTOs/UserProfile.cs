@@ -1,5 +1,3 @@
-
-
 namespace Application.Features.Profile.DTOs;
 
 public record UserProfileDto(
@@ -12,5 +10,7 @@ public record UserProfileDto(
     bool HasGoogleLinked,
     NotificationPreferencesDto? NotificationPreferences,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    string? ReferralCode = null,
+    string? ReferralLink = null
 );

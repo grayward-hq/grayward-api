@@ -126,7 +126,7 @@ public class CancelWaitlistHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithNonExistentEntry_ReturnsNotFound()
+    public async Task Handle_WithNonExistentEntry_ReturnsUnauthorized()
     {
         // Arrange
         var cmd = new CancelWaitlistCommand("nonexistent@example.com", ValidToken);
@@ -140,7 +140,7 @@ public class CancelWaitlistHandlerTests
         // Assert
         Assert.False(result.IsSuccess);
         Assert.NotNull(result.Error);
-        Assert.Equal(ErrorCode.NotFound, result.Error.Code);
+        Assert.Equal(ErrorCode.Unauthorized, result.Error.Code);
 
         // Token should never be checked when there's no entry to check it against.
         _mockTokenService.Verify(
