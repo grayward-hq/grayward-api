@@ -136,6 +136,48 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 Error.Validation("Could not join waitlist. Please try again."));
         }
 
+        // Apply the referral bump before dispatching the (irreversible) confirmation email,
+        // so a bump failure rolls back the entry without an email having been sent for it.
+        if (referrer is not null)
+        {
+            try
+            {
+                var bumped = await _waitlistRepo.ApplyReferralBump(referrer.Id, ct);
+                if (!bumped)
+                {
+                    _logger.LogError(
+                        "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                        referrer.Id,
+                        entry.Id);
+
+                    _waitlistRepo.Remove(entry);
+                    await _waitlistRepo.SaveChangesAsync(ct);
+
+                    return Result<WaitlistResponse>.Failure(
+                        Error.Validation("Could not process referral. Please try again."));
+                }
+
+                _logger.LogInformation(
+                    "Applied referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                    referrer.Id,
+                    entry.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
+                    referrer.Id,
+                    entry.Id);
+
+                _waitlistRepo.Remove(entry);
+                await _waitlistRepo.SaveChangesAsync(ct);
+
+                return Result<WaitlistResponse>.Failure(
+                    Error.Validation("Could not process referral. Please try again."));
+            }
+        }
+
         try
         {
             var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
@@ -155,46 +197,6 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
             return Result<WaitlistResponse>.Failure(
                 Error.Validation("Could not send confirmation email. Please verify your address and try again."));
-        }
-
-        if (referrer is not null)
-        {
-            try
-            {
-                var bumped = await _waitlistRepo.ApplyReferralBump(referrer.Id, ct);
-                if (!bumped)
-                {
-                    _logger.LogError(
-                        "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
-                        referrer.Email,
-                        normalizedEmail);
-
-                    _waitlistRepo.Remove(entry);
-                    await _waitlistRepo.SaveChangesAsync(ct);
-
-                    return Result<WaitlistResponse>.Failure(
-                        Error.Validation("Could not process referral. Please try again."));
-                }
-
-                _logger.LogInformation(
-                    "Applied referral bump for {referrerEmail} after waitlist join by {email}",
-                    referrer.Email,
-                    normalizedEmail);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to apply referral bump for {referrerEmail} after waitlist join by {email}",
-                    referrer.Email,
-                    normalizedEmail);
-
-                _waitlistRepo.Remove(entry);
-                await _waitlistRepo.SaveChangesAsync(ct);
-
-                return Result<WaitlistResponse>.Failure(
-                    Error.Validation("Could not process referral. Please try again."));
-            }
         }
 
         var entryReferralLink = BuildReferralLink(entry.ReferralCode);
@@ -248,21 +250,21 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     {
         var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildCancellationLink(string email, string token)
     {
         var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private string BuildReferralLink(string referralCode)
     {
         var baseUrl = _config["FrontendUrl:WaitlistJoin"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
         baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}/?ref={Uri.EscapeDataString(referralCode)}";
+        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
     }
 
     private async Task SendConfirmationEmail(

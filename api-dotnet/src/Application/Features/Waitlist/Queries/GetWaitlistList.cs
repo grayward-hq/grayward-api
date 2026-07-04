@@ -65,6 +65,7 @@ public class GetWaitlistListHandler : IRequestHandler<GetWaitlistListQuery, Resu
             w.ReferralCode,
             w.ReferredByWaitlistId,
             w.ReferralCount,
+            w.ReferralPosition,
             w.LastReferralAt)).ToList();
 
         var http = _http.HttpContext;

@@ -42,17 +42,16 @@ public class RequestWaitlistCancellationHandler
         CancellationToken ct)
     {
         var normalizedEmail = cmd.Email.Trim().ToLowerInvariant();
-        var emailHash = HashEmail(normalizedEmail);
 
         var entry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
         if (entry is null)
         {
-            _logger.LogInformation(
-                "Cancellation link request masked for non-existent email [{emailHash}]",
-                emailHash);
+            _logger.LogInformation("Cancellation link request masked for non-existent email");
 
             return GenericSuccess();
         }
+
+        var emailHash = HashEmail(normalizedEmail);
 
         if (entry.Status == WaitlistStatus.Cancelled || entry.Status == WaitlistStatus.Promoted)
         {
@@ -98,12 +97,18 @@ public class RequestWaitlistCancellationHandler
 
     private string BuildCancellationLink(string email, string token)
     {
-        var baseUrl = _config["FrontendUrl:WaitlistCancel"]
-            ?? _config["FrontendUrl:Base"]
-            ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
+        // Require the dedicated cancellation route — falling back to the site root would email
+        // a link to the wrong page. A missing setting is a configuration error, surfaced (and
+        // masked) by the caller's try/catch rather than silently producing a bad link.
+        string baseUrl = _config["FrontendUrl:path"] ?? _config["FrontendUrl:Path"];
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException(
+                "FrontendUrl:Path is not configured; cannot build the waitlist cancellation link.");
 
-        return $"{baseUrl}/?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        baseUrl = baseUrl.TrimEnd('/');
+        var waitlistCancellationUrl = _config["FrontendUrl:WaitlistCancel"] ?? $"{baseUrl}/waitlist/cancel";
+
+        return $"{waitlistCancellationUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private async Task SendCancellationEmail(string email, string cancellationLink)
