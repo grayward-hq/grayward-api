@@ -4,8 +4,7 @@ namespace Web.Extensions
 {
     public static class HostExtensions
     {
-        public static IHostBuilder AddAppLogging(
-    this IHostBuilder host)
+        public static IHostBuilder AddAppLogging(this IHostBuilder host)
         {
             host.UseSerilog((ctx, config) =>
             {

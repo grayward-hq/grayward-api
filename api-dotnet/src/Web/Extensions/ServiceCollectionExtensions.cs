@@ -27,7 +27,6 @@ namespace Web.Extensions
             services.AddScoped<ICurrentUser, CurrentUser>();
 
             services.AddValidatorsFromAssembly(typeof(RegisterCommand).Assembly);
-            services.AddHttpContextAccessor();
 
             services.AddSignalR();
             services.AddHostedService<DomainIntelConsumer>();
@@ -35,10 +34,10 @@ namespace Web.Extensions
             services.AddHostedService<AlertOutboxProcessor>();
             services.AddHostedService<ScanReaperWorker>();
             services.AddHostedService<DomainVerificationReaper>();
+
             services.AddScoped<ScanDispatchService>();
             services.AddScoped<SslExpiryCheckService>();
             services.AddScoped<OwnershipCheckService>();
-
             services.AddScoped<BreachMonitoringService>();
             services.AddScoped<BrandProtectionCheckService>();
 
@@ -74,12 +73,6 @@ namespace Web.Extensions
                 options.KnownProxies.Clear();
             });
 
-            return services;
-        }
-
-        private static IServiceCollection AddHostedWorkers(
-        this IServiceCollection services)
-        {
             return services;
         }
 
@@ -141,9 +134,9 @@ namespace Web.Extensions
 
             services.AddHealthChecks()
                 .AddNpgSql(
-                    configuration.GetConnectionString("DefaultConnection")
-                        ?? configuration.GetConnectionString("DefaultConnectionString"),
-        name: "postgres",
+                    configuration.GetConnectionString("DefaultConnectionString")
+                        ?? configuration.GetConnectionString("DefaultConnection"),
+                    name: "postgres",
                     tags: ["db", "ready"])
                 .AddRedis(
                     redisConfig,

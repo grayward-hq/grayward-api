@@ -110,12 +110,14 @@ namespace Infrastructure
 
             // Redis
             var redisConfig = configuration.GetValue<string>("Redis:Configuration") ?? "localhost:6379";
+
             services.AddSingleton<IConnectionMultiplexer>(sp =>
             {
                 var config = ConfigurationOptions.Parse(redisConfig);
                 config.AbortOnConnectFail = false;
                 return ConnectionMultiplexer.Connect(config);
             });
+
             services.AddSingleton<IRedisProducer, RedisProducer>();
             services.AddSingleton<IRedisService, RedisService>();
 
@@ -133,6 +135,7 @@ namespace Infrastructure
             services.AddScoped<IFindingRepository, FindingRepository>();
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<ITokenService, TokenService>();
+
             services.AddSingleton<LookupClient>(_ =>
                             new LookupClient(
                                 new LookupClientOptions(
@@ -146,6 +149,7 @@ namespace Infrastructure
                                 }
                             )
                         );
+
             services.AddScoped<IDnsResolver, DnsResolver>();
             services.AddScoped<SslExpiryChecker>();
             services.AddScoped<IAlertService, AlertService>();
@@ -159,32 +163,32 @@ namespace Infrastructure
             services.AddScoped<IWaitlistCancellationTokenService, WaitlistCancellationTokenService>();
             services.AddHttpClient("anthropic");  // base URL set per-request in the service
             services.AddHttpClient("gemini");     // base URL set per-request in the service
-            services
-                    .AddHttpClient("openai", client =>
-                    {
-                        // Works for both OpenAI and Groq — base URL differs by key config
-                        var baseUrl = configuration["Chat:OpenAi:BaseUrl"] ?? "https://api.openai.com";
-                        var apiKey = configuration["Chat:OpenAi:ApiKey"] ?? "";
+            services.AddHttpClient("openai", client =>
+                        {
+                            // Works for both OpenAI and Groq — base URL differs by key config
+                            var baseUrl = configuration["Chat:OpenAi:BaseUrl"] ?? "https://api.openai.com";
+                            var apiKey = configuration["Chat:OpenAi:ApiKey"] ?? "";
 
-                        client.BaseAddress = new Uri(baseUrl);
-                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-                    });
+                            client.BaseAddress = new Uri(baseUrl);
+                            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+                        });
             services.AddScoped<ClaudeService>();
             services.AddScoped<AnthropicChatService>();
             services.AddScoped<GeminiChatService>();
             services.AddScoped<OpenAiChatService>();
             services.AddScoped<IChatServiceFactory, ChatServiceFactory>();
-            services.AddScoped<IChatService>(sp =>
-                    sp.GetRequiredService<IChatServiceFactory>().Resolve());
+            services.AddScoped<IChatService>(sp => sp.GetRequiredService<IChatServiceFactory>().Resolve());
             services.AddHttpClient("slack");
             services.AddScoped<ISlackService, SlackService>();
             services.AddSingleton<IPlanCatalog, PlanCatalog>();
             services.AddScoped<IQuotaService, QuotaService>();
             services.AddScoped<IScanJobFactory, ScanJobFactory>();
             services.AddScoped<IIntegrationRepository, IntegrationRepository>();
+
             services.AddDataProtection()
                     .PersistKeysToDbContext<VulnWatchDbContext>()
                     .SetApplicationName("VulnWatch");
+
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<OwaspEvaluationEngine>();
             services.AddHttpClient("BrandProtection", client =>
@@ -198,12 +202,13 @@ namespace Infrastructure
                 ServerCertificateCustomValidationCallback =
                     HttpClientHandler.DangerousAcceptAnyServerCertificateValidator // lookalikes may have bad certs
             });
+
             services.AddScoped<HaveIBeenPwnedService>();
             services.AddScoped<LookAlikeDomainChecker>();
             services.AddScoped<IBrandThreatRepository, BrandThreatRepository>();
             services.AddScoped<IMonitoredEmailRepository, MonitoredEmailRepository>();
-            services.Configure<GitHubAppOptions>(
-                configuration.GetSection(GitHubAppOptions.Section));
+            services.Configure<GitHubAppOptions>(configuration.GetSection(GitHubAppOptions.Section));
+
             services.AddSingleton<GitHubAppJwtFactory>();
             services.AddHttpClient<IGitHubAppClient, GitHubAppClient>(client =>
             {
