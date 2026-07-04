@@ -92,6 +92,7 @@ public class UpdateWaitlistHandler : IRequestHandler<UpdateWaitlistCommand, Resu
                 entry.ReferralCode,
                 entry.ReferredByWaitlistId,
                 entry.ReferralCount,
+                entry.ReferralPosition,
                 entry.LastReferralAt));
     }
 }

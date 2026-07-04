@@ -222,103 +222,26 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
 
     public async Task<bool> ApplyReferralBump(Guid waitlistId, CancellationToken ct)
     {
-        IDbContextTransaction? transaction = null;
+        // A referral only affects the referrer's OWN row: decrement their referral ranking
+        // (floored at 1) and increment the referral count. No other entry is displaced, so the
+        // join-order Position is untouched. A single atomic UPDATE is correct under concurrent
+        // referrals to the same referrer and needs no table lock. Returns false (no rows) when
+        // the referrer no longer exists or has been cancelled/promoted.
+        var now = DateTime.UtcNow;
 
-        try
-        {
-            if (_context.Database.CurrentTransaction is null)
-            {
-                transaction = await _context.Database.BeginTransactionAsync(ct);
-            }
+        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Waitlists"
+            SET "ReferralPosition" = GREATEST("ReferralPosition" - 1, 1),
+                "ReferralCount" = "ReferralCount" + 1,
+                "LastReferralAt" = {now},
+                "UpdatedAt" = {now}
+            WHERE "Id" = {waitlistId}
+              AND "Status" NOT IN ('Cancelled', 'Promoted')
+            """,
+            ct);
 
-            if (_context.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
-            {
-                await _context.Database.ExecuteSqlRawAsync(
-                    "LOCK TABLE \"Waitlists\" IN EXCLUSIVE MODE",
-                    ct);
-            }
-
-            var referrer = await _context.Waitlists
-                .FirstOrDefaultAsync(w => w.Id == waitlistId, ct);
-
-            if (referrer is null ||
-                referrer.Status is WaitlistStatus.Cancelled or WaitlistStatus.Promoted)
-            {
-                if (transaction is not null)
-                {
-                    await transaction.CommitAsync(ct);
-                }
-
-                return false;
-            }
-
-            referrer.RecordReferral();
-
-            if (referrer.Position <= 1)
-            {
-                await _context.SaveChangesAsync(ct);
-
-                if (transaction is not null)
-                {
-                    await transaction.CommitAsync(ct);
-                }
-
-                return true;
-            }
-
-            var originalReferrerPosition = referrer.Position;
-            var targetPosition = originalReferrerPosition - 1;
-            var displacedEntry = await _context.Waitlists
-                .FirstOrDefaultAsync(w => w.Position == targetPosition, ct);
-
-            if (displacedEntry is null)
-            {
-                // No entry at target position (gap in queue) - still move referrer up
-                referrer.SetPosition(targetPosition);
-                await _context.SaveChangesAsync(ct);
-
-                if (transaction is not null)
-                {
-                    await transaction.CommitAsync(ct);
-                }
-
-                return true;
-            }
-
-            var temporaryPosition = await GetTemporaryPosition(ct);
-
-            referrer.SetPosition(temporaryPosition);
-            await _context.SaveChangesAsync(ct);
-
-            displacedEntry.SetPosition(originalReferrerPosition);
-            await _context.SaveChangesAsync(ct);
-
-            referrer.SetPosition(targetPosition);
-            await _context.SaveChangesAsync(ct);
-
-            if (transaction is not null)
-            {
-                await transaction.CommitAsync(ct);
-            }
-
-            return true;
-        }
-        catch
-        {
-            if (transaction is not null)
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-            }
-
-            throw;
-        }
-        finally
-        {
-            if (transaction is not null)
-            {
-                await transaction.DisposeAsync();
-            }
-        }
+        return rowsAffected > 0;
     }
 
     private IQueryable<Waitlist> ApplySorting(IQueryable<Waitlist> query, string sortBy, string sortOrder)
@@ -333,13 +256,5 @@ public async Task<double> GetAverageDaysToPromotion(CancellationToken ct)
             "createdat" => isAsc ? query.OrderBy(w => w.CreatedAt) : query.OrderByDescending(w => w.CreatedAt),
             _ => query.OrderBy(w => w.Position),
         };
-    }
-
-    private async Task<long> GetTemporaryPosition(CancellationToken ct)
-    {
-        var minPosition = await _context.Waitlists
-            .MinAsync(w => (long?)w.Position, ct) ?? 0;
-
-        return minPosition > 0 ? -1 : minPosition - 1;
     }
 }

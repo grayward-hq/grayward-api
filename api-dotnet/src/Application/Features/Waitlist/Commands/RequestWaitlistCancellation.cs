@@ -42,17 +42,16 @@ public class RequestWaitlistCancellationHandler
         CancellationToken ct)
     {
         var normalizedEmail = cmd.Email.Trim().ToLowerInvariant();
-        var emailHash = HashEmail(normalizedEmail);
 
         var entry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
         if (entry is null)
         {
-            _logger.LogInformation(
-                "Cancellation link request masked for non-existent email [{emailHash}]",
-                emailHash);
+            _logger.LogInformation("Cancellation link request masked for non-existent email");
 
             return GenericSuccess();
         }
+
+        var emailHash = HashEmail(normalizedEmail);
 
         if (entry.Status == WaitlistStatus.Cancelled || entry.Status == WaitlistStatus.Promoted)
         {

@@ -457,6 +457,9 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.Property(w => w.ReferralCount)
                 .HasDefaultValue(0);
 
+            e.Property(w => w.ReferralPosition)
+                .IsRequired();
+
             e.Property(w => w.ReferredByWaitlistId)
                 .IsRequired(false);
 
@@ -471,6 +474,7 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .UseCollation("case_insensitive");
             e.HasIndex(w => w.Status).HasDatabaseName("IX_Waitlists_Status");
             e.HasIndex(w => w.Position).IsUnique().HasDatabaseName("IX_Waitlists_Position");
+            e.HasIndex(w => w.ReferralPosition).HasDatabaseName("IX_Waitlists_ReferralPosition");
             e.HasIndex(w => w.CreatedAt).HasDatabaseName("IX_Waitlists_CreatedAt");
             e.HasIndex(w => w.PromotedUserId).HasDatabaseName("IX_Waitlists_PromotedUserId");
             e.HasIndex(w => w.ReferredByWaitlistId).HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");

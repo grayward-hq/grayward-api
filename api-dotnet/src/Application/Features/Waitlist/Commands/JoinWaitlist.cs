@@ -136,27 +136,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 Error.Validation("Could not join waitlist. Please try again."));
         }
 
-        try
-        {
-            var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
-            var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
-            var referralLink = BuildReferralLink(entry.ReferralCode);
-
-            await SendConfirmationEmail(normalizedEmail, position, confirmLink, cancellationLink, referralLink);
-            _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send confirmation email to {email}. Aborting registration.", cmd.Email);
-
-            _waitlistRepo.Remove(entry);
-            await _waitlistRepo.SaveChangesAsync(ct);
-
-            return Result<WaitlistResponse>.Failure(
-                Error.Validation("Could not send confirmation email. Please verify your address and try again."));
-        }
-
+        // Apply the referral bump before dispatching the (irreversible) confirmation email,
+        // so a bump failure rolls back the entry without an email having been sent for it.
         if (referrer is not null)
         {
             try
@@ -195,6 +176,27 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 return Result<WaitlistResponse>.Failure(
                     Error.Validation("Could not process referral. Please try again."));
             }
+        }
+
+        try
+        {
+            var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
+            var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
+            var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
+            var referralLink = BuildReferralLink(entry.ReferralCode);
+
+            await SendConfirmationEmail(normalizedEmail, position, confirmLink, cancellationLink, referralLink);
+            _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send confirmation email to {email}. Aborting registration.", cmd.Email);
+
+            _waitlistRepo.Remove(entry);
+            await _waitlistRepo.SaveChangesAsync(ct);
+
+            return Result<WaitlistResponse>.Failure(
+                Error.Validation("Could not send confirmation email. Please verify your address and try again."));
         }
 
         var entryReferralLink = BuildReferralLink(entry.ReferralCode);

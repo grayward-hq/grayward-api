@@ -41,6 +41,7 @@ public record WaitlistListItemDto(
     string? ReferralCode = null,
     Guid? ReferredByWaitlistId = null,
     int ReferralCount = 0,
+    long ReferralPosition = 0,
     DateTime? LastReferralAt = null);
 
 public record UpdateWaitlistRequest(string? CompanyName = null, string? Notes = null);
