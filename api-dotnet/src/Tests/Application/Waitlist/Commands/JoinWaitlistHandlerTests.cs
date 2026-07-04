@@ -71,17 +71,20 @@ public class JoinWaitlistHandlerTests
         // Act
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
-        // Assert
+        // Assert: join creates a pending entry with NO position or referral code yet
+        // (both are claimed on confirmation), so the response is generic.
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
         Assert.Equal("test@example.com", result.Value!.Email);
-        Assert.Equal(1L, result.Value.Position);
+        Assert.Equal(0L, result.Value.Position);
         Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
         Assert.False(result.Value.EmailConfirmed);
-        Assert.False(string.IsNullOrWhiteSpace(result.Value.ReferralCode));
-        Assert.Equal($"http://localhost:3000/waitlist?ref={result.Value.ReferralCode}", result.Value.ReferralLink);
+        Assert.Null(result.Value.ReferralCode);
+        Assert.Null(result.Value.ReferralLink);
         Assert.NotNull(addedEntry);
         Assert.Equal(comments, addedEntry!.Comments);
+        Assert.Null(addedEntry.Position);
+        Assert.Null(addedEntry.ReferralCode);
 
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -96,10 +99,11 @@ public class JoinWaitlistHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithValidReferralCode_StoresReferrerAndAppliesBump()
+    public async Task Handle_WithValidReferralCode_StoresReferrerWithoutBumpingAtJoin()
     {
-        // Arrange
-        var referrer = WaitlistEntity.Create("referrer@example.com", null, 40L, referralCode: "REF123");
+        // Arrange: referrer must be a confirmed entry so it owns a referral code.
+        var referrer = WaitlistEntity.Create("referrer@example.com");
+        referrer.ConfirmEmail(40L, "REF123");
         var cmd = new JoinWaitlistCommand(
             "new@example.com",
             "New Company",
@@ -112,28 +116,20 @@ public class JoinWaitlistHandlerTests
             .ReturnsAsync((UserEntity?)null);
         _mockWaitlistRepo.Setup(r => r.FindByReferralCode("REF123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(referrer);
-        _mockWaitlistRepo
-            .Setup(r => r.FindByReferralCode(It.Is<string>(code => code != "REF123"), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WaitlistEntity?)null);
-        _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(41L);
         _mockWaitlistRepo.Setup(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()))
             .Callback<WaitlistEntity, CancellationToken>((entry, _) => addedEntry = entry)
             .Returns(Task.CompletedTask);
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
-        _mockWaitlistRepo.Setup(r => r.ApplyReferralBump(referrer.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
 
         // Act
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
-        // Assert
+        // Assert: the referrer link is stored, but the bump is deferred to confirmation.
         Assert.True(result.IsSuccess);
         Assert.NotNull(addedEntry);
         Assert.Equal(referrer.Id, addedEntry!.ReferredByWaitlistId);
-
-        _mockWaitlistRepo.Verify(r => r.ApplyReferralBump(referrer.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.ApplyReferralBump(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -168,8 +164,8 @@ public class JoinWaitlistHandlerTests
     {
         // Arrange
         var cmd = new JoinWaitlistCommand("test@example.com");
-        var existingEntry = WaitlistEntity.Create("test@example.com", null, 100L);
-        existingEntry.ConfirmEmail();
+        var existingEntry = WaitlistEntity.Create("test@example.com");
+        existingEntry.ConfirmEmail(100L, "EXISTCODE1");
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingEntry);
@@ -244,6 +240,37 @@ public class JoinWaitlistHandlerTests
         _mockWaitlistRepo.Verify(r => r.Remove(addedEntry!), Times.Once);
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
         _mockWaitlistRepo.Verify(r => r.ApplyReferralBump(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WithCancelledEntry_ReactivatesInsteadOfMasking()
+    {
+        // Arrange: a previously cancelled email should be able to rejoin.
+        var cancelled = WaitlistEntity.Create("comeback@example.com");
+        cancelled.ConfirmEmail(5L, "OLDCODE");
+        cancelled.MarkCancelled();
+        var cmd = new JoinWaitlistCommand("comeback@example.com");
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cancelled);
+        _mockUserManager.Setup(um => um.FindByEmailAsync(It.IsAny<string>()))
+            .ReturnsAsync((UserEntity?)null);
+        _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        var result = await _handler.Handle(cmd, CancellationToken.None);
+
+        // Assert: reactivated in place (Update, not Add), fresh pending state, new confirmation email.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WaitlistStatus.Pending, cancelled.Status);
+        Assert.False(cancelled.EmailConfirmed);
+        Assert.Null(cancelled.Position);
+        Assert.Null(cancelled.ReferralCode);
+
+        _mockWaitlistRepo.Verify(r => r.Update(cancelled), Times.Once);
+        _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockEmailService.Verify(es => es.SendAsync("comeback@example.com", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
 
     private static Mock<UserManager<UserEntity>> MockUserManager()

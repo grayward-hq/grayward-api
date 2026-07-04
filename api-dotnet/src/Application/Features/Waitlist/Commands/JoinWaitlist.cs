@@ -61,9 +61,10 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             EmailConfirmed: false
         );
 
-        // Check if email already on waitlist
+        // An existing entry that is NOT cancelled means the email is already on the waitlist
+        // (pending/confirmed/promoted) — mask it to avoid enumeration.
         var existingWaitlistEntry = await _waitlistRepo.FindByEmail(normalizedEmail, ct);
-        if (existingWaitlistEntry is not null)
+        if (existingWaitlistEntry is not null && existingWaitlistEntry.Status != WaitlistStatus.Cancelled)
         {
             _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already exists.", cmd.Email);
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
@@ -87,46 +88,41 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             }
         }
 
-        var position = await _waitlistRepo.GetNextPosition(ct);
-        var referralCode = await GenerateUniqueReferralCode(ct);
-
-        var entry = WaitlistEntity.Create(
+        // A previously cancelled entry rejoins by reactivating in place; a new email is created.
+        // Position and referral code are NOT assigned here — they are claimed on email confirmation.
+        var isReactivation = existingWaitlistEntry is not null;
+        var entry = existingWaitlistEntry ?? WaitlistEntity.Create(
             normalizedEmail,
             cmd.CompanyName,
-            position,
             cmd.Comments,
-            referralCode,
             referrer?.Id);
+
+        if (isReactivation)
+        {
+            entry.UpdateCompanyName(cmd.CompanyName);
+            entry.Reactivate(referrer?.Id);
+        }
 
         var confirmationToken = GenerateToken();
         entry.GenerateEmailConfirmationToken(confirmationToken);
 
         try
         {
-            await _waitlistRepo.AddAsync(entry, ct);
+            if (isReactivation)
+                _waitlistRepo.Update(entry);
+            else
+                await _waitlistRepo.AddAsync(entry, ct);
+
             await _waitlistRepo.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
-            var constraintName = GetConstraintName(ex);
+            // Most likely a concurrent join with the same email — mask it.
             _logger.LogInformation(
                 ex,
                 "Waitlist join hit unique constraint {constraintName} for {email}.",
-                constraintName,
+                GetConstraintName(ex),
                 cmd.Email);
-
-            if (constraintName == "IX_Waitlists_Position")
-            {
-                return Result<WaitlistResponse>.Failure(
-                    Error.Validation("Could not assign waitlist position. Please try again."));
-            }
-
-            if (constraintName == "IX_Waitlists_ReferralCode")
-            {
-                return Result<WaitlistResponse>.Failure(
-                    Error.Validation("Could not assign referral code. Please try again."));
-            }
-
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
         catch (DbUpdateException ex)
@@ -136,80 +132,38 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 Error.Validation("Could not join waitlist. Please try again."));
         }
 
-        // Apply the referral bump before dispatching the (irreversible) confirmation email,
-        // so a bump failure rolls back the entry without an email having been sent for it.
-        if (referrer is not null)
-        {
-            try
-            {
-                var bumped = await _waitlistRepo.ApplyReferralBump(referrer.Id, ct);
-                if (!bumped)
-                {
-                    _logger.LogError(
-                        "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
-                        referrer.Id,
-                        entry.Id);
-
-                    _waitlistRepo.Remove(entry);
-                    await _waitlistRepo.SaveChangesAsync(ct);
-
-                    return Result<WaitlistResponse>.Failure(
-                        Error.Validation("Could not process referral. Please try again."));
-                }
-
-                _logger.LogInformation(
-                    "Applied referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
-                    referrer.Id,
-                    entry.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to apply referral bump for referrer {referrerId} after waitlist join by {waitlistEntryId}",
-                    referrer.Id,
-                    entry.Id);
-
-                _waitlistRepo.Remove(entry);
-                await _waitlistRepo.SaveChangesAsync(ct);
-
-                return Result<WaitlistResponse>.Failure(
-                    Error.Validation("Could not process referral. Please try again."));
-            }
-        }
-
         try
         {
             var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
             var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
             var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
-            var referralLink = BuildReferralLink(entry.ReferralCode);
 
-            await SendConfirmationEmail(normalizedEmail, position, confirmLink, cancellationLink, referralLink);
+            await SendConfirmationEmail(normalizedEmail, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send confirmation email to {email}. Aborting registration.", cmd.Email);
 
-            _waitlistRepo.Remove(entry);
+            // Roll back: a new entry is removed; a reactivated one is returned to cancelled.
+            if (isReactivation)
+            {
+                entry.MarkCancelled();
+                _waitlistRepo.Update(entry);
+            }
+            else
+            {
+                _waitlistRepo.Remove(entry);
+            }
             await _waitlistRepo.SaveChangesAsync(ct);
 
             return Result<WaitlistResponse>.Failure(
                 Error.Validation("Could not send confirmation email. Please verify your address and try again."));
         }
 
-        var entryReferralLink = BuildReferralLink(entry.ReferralCode);
-
-        return Result<WaitlistResponse>.Success(
-            new WaitlistResponse(
-                entry.Email,
-                entry.Position,
-                entry.Status,
-                entry.CreatedAt,
-                entry.EmailConfirmed,
-                ReferralCode: entry.ReferralCode,
-                ReferralLink: entryReferralLink));
+        // Position and referral code are claimed on email confirmation, so the join response is
+        // the generic pending response — the user must confirm their email to secure a spot.
+        return Result<WaitlistResponse>.Success(genericSuccessResponse);
     }
 
 
@@ -223,27 +177,6 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             rng.GetBytes(bytes);
         }
         return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
-    }
-
-    private async Task<string> GenerateUniqueReferralCode(CancellationToken ct)
-    {
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            var code = GenerateReferralCode();
-            if (await _waitlistRepo.FindByReferralCode(code, ct) is null)
-            {
-                return code;
-            }
-        }
-
-        return Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
-    }
-
-    private string GenerateReferralCode()
-    {
-        Span<byte> bytes = stackalloc byte[8];
-        RandomNumberGenerator.Fill(bytes);
-        return Convert.ToHexString(bytes)[..10];
     }
 
     private string BuildConfirmationLink(string email, string token)
@@ -260,30 +193,19 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
-    private string BuildReferralLink(string referralCode)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistJoin"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
-    }
-
     private async Task SendConfirmationEmail(
         string email,
-        long position,
         string confirmLink,
-        string cancellationLink,
-        string referralLink)
+        string cancellationLink)
     {
-        var body = BuildConfirmationEmailBody(email, position, confirmLink, cancellationLink, referralLink);
+        var body = BuildConfirmationEmailBody(email, confirmLink, cancellationLink);
         await _emailService.SendAsync(email, "Confirm Your Email - Vulnwatch Waitlist", body);
     }
 
     private string BuildConfirmationEmailBody(
         string email,
-        long position,
         string confirmLink,
-        string cancellationLink,
-        string referralLink)
+        string cancellationLink)
     {
         return $@"
     <!DOCTYPE html>
@@ -297,11 +219,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             <h2 style='color: #333;'>Welcome to Vulnwatch! 🎯</h2>
 
             <p style='font-size: 16px; color: #555;'>
-                Thanks for your interest in Vulnwatch. You're currently <strong>#{position}</strong> on our waitlist.
-            </p>
-
-            <p style='font-size: 16px; color: #555;'>
-                Please confirm your email address to secure your spot:
+                Thanks for your interest in Vulnwatch. Confirm your email address to claim your spot
+                on the waitlist and unlock your personal referral link:
             </p>
 
             <div style='text-align: center; margin: 30px 0;'>
@@ -317,15 +236,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             </p>
 
             <p style='font-size: 12px; color: #999; margin-top: 40px;'>
-                This confirmation link can be used until your email is confirmed.
-            </p>
-
-            <p style='font-size: 14px; color: #555; margin-top: 24px;'>
-                Want to move up the waitlist and get a feel of our premium and enterprise features? Share your referral link, onboard new users and experience Vulnwatch:
-            </p>
-
-            <p style='font-size: 14px; color: #999;'>
-                <code style='background-color: #f0f0f0; padding: 5px; display: inline-block;'>{referralLink}</code>
+                This confirmation link can be used until your email is confirmed. Once confirmed,
+                you'll get your waitlist position and a referral link to move up the queue.
             </p>
 
             <p style='font-size: 12px; color: #999; margin-top: 24px;'>

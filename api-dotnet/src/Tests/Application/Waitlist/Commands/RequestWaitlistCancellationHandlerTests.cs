@@ -52,7 +52,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
@@ -105,7 +105,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.MarkCancelled();
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
@@ -133,7 +133,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.MarkPromoted(Guid.NewGuid());
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
@@ -161,7 +161,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
@@ -185,7 +185,7 @@ public class RequestWaitlistCancellationHandlerTests
         // Arrange
         var lowerEmail = "test@example.com";
         var mixedCaseEmail = " Test@Example.Com ";
-        var entry = WaitlistEntity.Create(lowerEmail, null, 1L);
+        var entry = WaitlistEntity.Create(lowerEmail, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(lowerEmail, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);

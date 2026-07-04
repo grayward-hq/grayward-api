@@ -30,7 +30,7 @@ public record WaitlistListItemDto(
     Guid Id,
     string Email,
     string? CompanyName,
-    long Position,
+    long? Position,
     WaitlistStatus Status,
     bool EmailConfirmed,
     DateTime CreatedAt,

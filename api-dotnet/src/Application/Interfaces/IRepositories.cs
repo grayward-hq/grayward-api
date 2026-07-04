@@ -171,6 +171,7 @@ public interface IWaitlistRepository : IRepository<Waitlist>
     Task<Waitlist?> FindByPromotedUserId(Guid userId, CancellationToken ct);
     Task<Waitlist?> GetById(Guid id, CancellationToken ct);
     Task<long> GetNextPosition(CancellationToken ct);
+    Task<long> GetLivePosition(long sequence, CancellationToken ct);
     Task<long> GetPositionByEmail(string email, CancellationToken ct);
     Task<int> GetTotalCount(CancellationToken ct);
     Task<(List<Waitlist> Items, int TotalCount)> GetPaged(

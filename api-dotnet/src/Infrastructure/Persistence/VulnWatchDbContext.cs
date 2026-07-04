@@ -432,8 +432,9 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
                 .HasMaxLength(50)
                 .HasDefaultValue(WaitlistStatus.Pending);
 
+            // Nullable: assigned only on email confirmation, cleared on cancellation.
             e.Property(w => w.Position)
-                .IsRequired();
+                .IsRequired(false);
 
             e.Property(w => w.EmailConfirmed)
                 .HasDefaultValue(false);
@@ -449,8 +450,10 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.Property(w => w.Notes)
                 .IsRequired(false);
 
+            // Nullable: assigned only on email confirmation. The unique index tolerates
+            // multiple NULLs (unconfirmed/cancelled), so no collision before assignment.
             e.Property(w => w.ReferralCode)
-                .IsRequired()
+                .IsRequired(false)
                 .HasMaxLength(32)
                 .UseCollation("case_insensitive");
 

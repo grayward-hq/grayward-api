@@ -87,13 +87,13 @@ public class WaitlistController : ControllerBase
     [HttpGet("verify")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
-    public async Task<ActionResult<Result<MessageResponse>>> VerifyEmail(
+    public async Task<ActionResult<Result<WaitlistResponse>>> VerifyEmail(
         [FromQuery] string email,
         [FromQuery] string token,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token))
-            return Result<MessageResponse>.Failure(
+            return Result<WaitlistResponse>.Failure(
                 Error.Validation("Email and token are required")).ToHttpResponse(this);
 
         var result = await _mediator.Send(

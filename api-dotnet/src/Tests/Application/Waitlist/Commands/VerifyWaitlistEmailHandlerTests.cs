@@ -2,6 +2,7 @@ using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Enums;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -13,29 +14,42 @@ namespace Tests.Application.Waitlist.Commands;
 public class VerifyWaitlistEmailHandlerTests
 {
     private readonly Mock<IWaitlistRepository> _mockWaitlistRepo;
+    private readonly Mock<IEmailService> _mockEmailService;
+    private readonly Mock<IConfiguration> _mockConfig;
     private readonly Mock<ILogger<VerifyWaitlistEmailHandler>> _mockLogger;
     private readonly VerifyWaitlistEmailHandler _handler;
 
     public VerifyWaitlistEmailHandlerTests()
     {
         _mockWaitlistRepo = new Mock<IWaitlistRepository>();
+        _mockEmailService = new Mock<IEmailService>();
+        _mockConfig = new Mock<IConfiguration>();
         _mockLogger = new Mock<ILogger<VerifyWaitlistEmailHandler>>();
-        _handler = new VerifyWaitlistEmailHandler(_mockWaitlistRepo.Object, _mockLogger.Object);
+        _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _handler = new VerifyWaitlistEmailHandler(
+            _mockWaitlistRepo.Object, _mockEmailService.Object, _mockConfig.Object, _mockLogger.Object);
     }
 
     [Fact]
-    public async Task Handle_WithValidToken_ConfirmsEmail()
+    public async Task Handle_WithValidToken_ConfirmsEmailAndAssignsPositionAndReferralCode()
     {
         // Arrange
         var email = "test@example.com";
         var token = "valid-token-12345";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.GenerateEmailConfirmationToken(token);
 
         var cmd = new VerifyWaitlistEmailCommand(email, token);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
+        _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(5L);
+        _mockWaitlistRepo.Setup(r => r.FindByReferralCode(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WaitlistEntity?)null);
+        _mockWaitlistRepo.Setup(r => r.GetLivePosition(5L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3L);
 
         // Act
         var result = await _handler.Handle(cmd, CancellationToken.None);
@@ -45,9 +59,47 @@ public class VerifyWaitlistEmailHandlerTests
         Assert.True(entry.EmailConfirmed);
         Assert.Equal(WaitlistStatus.EmailConfirmed, entry.Status);
         Assert.Null(entry.EmailConfirmationToken);
+        Assert.Equal(5L, entry.Position);
+        Assert.False(string.IsNullOrWhiteSpace(entry.ReferralCode));
+        // Response carries the live rank, not the raw sequence.
+        Assert.Equal(3L, result.Value!.Position);
+        Assert.Equal(entry.ReferralCode, result.Value.ReferralCode);
 
         _mockWaitlistRepo.Verify(r => r.Update(entry), Times.Once);
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        // A post-confirmation email with position + referral link is sent to the user.
+        _mockEmailService.Verify(
+            es => es.SendAsync(email, It.IsAny<string>(), It.Is<string>(b => b.Contains(entry.ReferralCode!))),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WithValidToken_AppliesReferrerCredit()
+    {
+        // Arrange: a referred entry credits its referrer on confirmation (not at join).
+        var referrerId = Guid.NewGuid();
+        var email = "referred@example.com";
+        var token = "valid-token-12345";
+        var entry = WaitlistEntity.Create(email, null, referredByWaitlistId: referrerId);
+        entry.GenerateEmailConfirmationToken(token);
+
+        var cmd = new VerifyWaitlistEmailCommand(email, token);
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2L);
+        _mockWaitlistRepo.Setup(r => r.FindByReferralCode(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WaitlistEntity?)null);
+        _mockWaitlistRepo.Setup(r => r.ApplyReferralBump(referrerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _handler.Handle(cmd, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        _mockWaitlistRepo.Verify(r => r.ApplyReferralBump(referrerId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -57,8 +109,8 @@ public class VerifyWaitlistEmailHandlerTests
         var email = "test@example.com";
         var correctToken = "valid-token-12345";
         var wrongToken = "wrong-token";
-        
-        var entry = WaitlistEntity.Create(email, null, 1L);
+
+        var entry = WaitlistEntity.Create(email, null);
         entry.GenerateEmailConfirmationToken(correctToken);
 
         var cmd = new VerifyWaitlistEmailCommand(email, wrongToken);
@@ -101,8 +153,8 @@ public class VerifyWaitlistEmailHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create(email, null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
 
         var cmd = new VerifyWaitlistEmailCommand(email, "some-token");
 
