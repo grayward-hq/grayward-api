@@ -2,9 +2,7 @@ package com.vulnwatch.worker.processor;
 
 import com.vulnwatch.worker.ai.breaker.DomainCircuitBreakerAiEnricher;
 import com.vulnwatch.worker.ai.interfaces.AiEnricher;
-import com.vulnwatch.worker.enums.FindingSeverity;
 import com.vulnwatch.worker.listener.CheckpointManager;
-import com.vulnwatch.worker.model.AiResult;
 import com.vulnwatch.worker.model.DomainFinding;
 import com.vulnwatch.worker.model.DomainIntel;
 import com.vulnwatch.worker.model.ScanJob;
@@ -21,17 +19,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Orchestrates a full domain scan pipeline from initialization to persistence and notification.
+ *
+ * Score responsibility:
+ *   SecurityScore and OWASPScore on the Scans row are both written by OWASPPersistence.saveMapping()
+ *   after OWASP evaluation completes. There is no separate "raw" score computation here —
+ *   the OWASP overall score IS the security score.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DomainJobProcessor implements JobProcessor {
-
-    private static final int BASE_SECURITY_SCORE = 100;
 
     private final DomainScanOrchestrator scanOrchestrator;
     private final AiEnricher aiEnricher;
@@ -48,7 +48,6 @@ public class DomainJobProcessor implements JobProcessor {
         String scanId = job.scanId();
         log.info("Starting domain scan [scanId={} domain={}]", scanId, job.domainName());
 
-        // Pass surfaces derived from registered scanners — not hardcoded
         stateMachine.start(scanId, scanOrchestrator.registeredSurfaces());
 
         try {
@@ -62,42 +61,41 @@ public class DomainJobProcessor implements JobProcessor {
 
     private void executeScanPipeline(ScanJob job) {
 
-        describeJobBestEffort(job);                                         // step 1
+        describeJobBestEffort(job);                                              // step 1
 
-        OrchestratorResult result = scanOrchestrator.scan(job);            // step 2
+        OrchestratorResult result = scanOrchestrator.scan(job);                  // step 2
 
-        int score = computeScore(result.aiResults());                       // step 3
-        log.info("Security score [scanId={} score={}]", job.scanId(), score);
-
-        // step 4 — unchanged except DomainFinding now carries id
+        // step 3 — persist findings; scan status set to Completed
         List<DomainFinding> findings = persistence.saveFindings(
                 job.scanId(), job.domainId(),
-                result.engineResults(), result.aiResults(), score
+                result.engineResults(), result.aiResults()
         );
 
         if (findings.isEmpty()) {
             log.warn("No findings persisted [scanId={}]", job.scanId());
         }
 
-        // step 5 — rule-based OWASP mapping
+        // step 4 — rule-based OWASP mapping
         OWASPEvaluationResult owaspResult = owaspEvaluator.evaluate(
                 job.scanId(), findings,
                 result.engineResults(), result.aiResults()
         );
 
-        // step 6 — persist mapping rows + score/tier on Scans
+        // step 5 — persist OWASP mappings and write SecurityScore + OWASPScore from OWASP result
         owaspPersistence.saveMapping(owaspResult);
+        log.info("Security score (OWASP) [scanId={} score={} tier={}]",
+                job.scanId(), owaspResult.overallScore(), owaspResult.tier().getLabel());
 
-        // step 7 — one AI call for the posture narrative (best-effort)
+        // step 6 — AI-generated posture narrative (best-effort, never throws)
         String narrative = generateOwaspPostureBestEffort(owaspResult);
 
-        // step 8 — persist narrative (best-effort, never throws)
+        // step 7 — persist narrative
         owaspPersistence.saveNarrative(job.scanId(), narrative);
 
-        // step 9 — publish
+        // step 8 — publish to .NET API via Redis
         publisher.publishSuccess(
                 job,
-                DomainIntel.of(job, score, owaspResult, surfaceAiEnricher.currentAvailability())
+                DomainIntel.of(job, owaspResult.overallScore(), owaspResult, surfaceAiEnricher.currentAvailability())
         );
 
         log.info("Scan complete [scanId={}]", job.scanId());
@@ -118,7 +116,6 @@ public class DomainJobProcessor implements JobProcessor {
         stateMachine.fail(job.scanId());
         publisher.publishFailure(job, e.getMessage());
         checkpointManager.clear(job.scanId());
-        // Leave checkpoint in place on unexpected failure for crash-resume tracking
     }
 
     private void describeJobBestEffort(ScanJob job) {
@@ -130,16 +127,5 @@ public class DomainJobProcessor implements JobProcessor {
         } catch (Exception e) {
             log.warn("Could not generate description [scanId={}]: {}", job.scanId(), e.getMessage());
         }
-    }
-
-    private int computeScore(List<AiResult> enrichments) {
-        int deductions = enrichments.stream()
-                .filter(Objects::nonNull)
-                .map(AiResult::severity)
-                .map(FindingSeverity::fromName)
-                .mapToInt(FindingSeverity::getDeduction)
-                .sum();
-
-        return Math.max(0, BASE_SECURITY_SCORE - deductions);
     }
 }

@@ -88,6 +88,11 @@ public class UpdateWaitlistHandler : IRequestHandler<UpdateWaitlistCommand, Resu
                 entry.EmailConfirmedAt,
                 entry.PromotedAt,
                 entry.Comments,
-                entry.Notes));
+                entry.Notes,
+                entry.ReferralCode,
+                entry.ReferredByWaitlistId,
+                entry.ReferralCount,
+                entry.ReferralPosition,
+                entry.LastReferralAt));
     }
 }

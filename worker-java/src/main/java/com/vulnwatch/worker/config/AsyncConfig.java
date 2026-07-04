@@ -2,33 +2,23 @@ package com.vulnwatch.worker.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-import java.util.concurrent.*;
-
+/**
+ * Configures virtual threads to prevent I/O pool exhaustion during concurrent scans.
+ */
 @Configuration
 public class AsyncConfig {
+
+    /**
+     * Backs CliExecutor process stream readers. Replaces the old 16-max fixed pool
+     * with virtual threads to stop tasks from queuing up during heavy concurrent runs.
+     * Since BufferedReader blocking allows carrier threads to unmount safely without pinning,
+     * this guarantees immediate execution for every stream-draining task.
+     */
     @Bean(destroyMethod = "shutdown")
     public ExecutorService executorService() {
-
-        return new ThreadPoolExecutor(
-                8, // core pool size
-                16, // max pool size
-                60L, TimeUnit.SECONDS, // idle thread timeout
-
-                new LinkedBlockingQueue<>(100), // queue capacity
-
-                new ThreadFactory() {
-                    private int count = 1;
-
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread t = new Thread(r);
-                        t.setName("app-exec-" + count++);
-                        return t;
-                    }
-                },
-
-                new ThreadPoolExecutor.CallerRunsPolicy() // backpressure strategy
-        );
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 }
