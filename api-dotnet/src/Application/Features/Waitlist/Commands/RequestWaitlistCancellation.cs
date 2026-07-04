@@ -100,14 +100,15 @@ public class RequestWaitlistCancellationHandler
         // Require the dedicated cancellation route — falling back to the site root would email
         // a link to the wrong page. A missing setting is a configuration error, surfaced (and
         // masked) by the caller's try/catch rather than silently producing a bad link.
-        var baseUrl = _config["FrontendUrl:WaitlistCancel"];
+        string baseUrl = _config["FrontendUrl:path"] ?? _config["FrontendUrl:Path"];
         if (string.IsNullOrWhiteSpace(baseUrl))
             throw new InvalidOperationException(
-                "FrontendUrl:WaitlistCancel is not configured; cannot build the waitlist cancellation link.");
+                "FrontendUrl:Path is not configured; cannot build the waitlist cancellation link.");
 
         baseUrl = baseUrl.TrimEnd('/');
+        var waitlistCancellationUrl = _config["FrontendUrl:WaitlistCancel"] ?? $"{baseUrl}/waitlist/cancel";
 
-        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+        return $"{waitlistCancellationUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private async Task SendCancellationEmail(string email, string cancellationLink)
