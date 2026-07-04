@@ -1,9 +1,11 @@
 using Application.Features.Waitlist.Queries;
 using Application.Interfaces;
+using Domain.Common;
 using Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
+using WaitlistEntity = Domain.Entities.Waitlist;
 
 namespace Tests.Application.Waitlist.Queries;
 
@@ -21,12 +23,14 @@ public class GetWaitlistStatusHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithAnyEmail_ReturnsGenericStatus()
+    public async Task Handle_WithExistingEntry_ReturnsRealStatus()
     {
         // Arrange
-        var email = "test@example.com";
-        var query = new GetWaitlistStatusQuery(email);
+        var entry = WaitlistEntity.Create("test@example.com", position: 42L);
+        var query = new GetWaitlistStatusQuery("test@example.com");
 
+        _mockWaitlistRepo.Setup(r => r.FindByEmail("test@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
         _mockWaitlistRepo.Setup(r => r.GetTotalCount(It.IsAny<CancellationToken>()))
             .ReturnsAsync(100);
 
@@ -36,42 +40,24 @@ public class GetWaitlistStatusHandlerTests
         // Assert
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.Equal(email, result.Value!.Email);
-        Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
-        Assert.Equal(0L, result.Value.Position);
+        Assert.Equal("test@example.com", result.Value!.Email);
+        Assert.Equal(42L, result.Value.Position);
         Assert.Equal(100, result.Value.TotalOnWaitlist);
-        Assert.False(result.Value.EmailConfirmed);
-        _mockWaitlistRepo.Verify(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WithNonExistentEmail_ReturnsGenericSuccess()
-    {
-        // Arrange
-        var query = new GetWaitlistStatusQuery("nonexistent@example.com");
-
-        _mockWaitlistRepo.Setup(r => r.GetTotalCount(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(100);
-
-        // Act
-        var result = await _handler.Handle(query, CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Value);
-        Assert.Equal("nonexistent@example.com", result.Value!.Email);
         Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
-        Assert.Equal(0L, result.Value.Position);
         Assert.False(result.Value.EmailConfirmed);
+        Assert.Equal(entry.CreatedAt, result.Value.JoinedAt);
     }
 
     [Fact]
-    public async Task Handle_NormalizesEmail()
+    public async Task Handle_WithConfirmedEntry_ReturnsConfirmedStatus()
     {
         // Arrange
-        var mixedCaseEmail = "Test@Example.Com";
-        var query = new GetWaitlistStatusQuery(mixedCaseEmail);
+        var entry = WaitlistEntity.Create("confirmed@example.com", position: 7L);
+        entry.ConfirmEmail();
+        var query = new GetWaitlistStatusQuery("confirmed@example.com");
 
+        _mockWaitlistRepo.Setup(r => r.FindByEmail("confirmed@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
         _mockWaitlistRepo.Setup(r => r.GetTotalCount(It.IsAny<CancellationToken>()))
             .ReturnsAsync(50);
 
@@ -80,28 +66,27 @@ public class GetWaitlistStatusHandlerTests
 
         // Assert
         Assert.True(result.IsSuccess);
-        Assert.Equal(mixedCaseEmail.ToLowerInvariant(), result.Value!.Email);
-        _mockWaitlistRepo.Verify(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.NotNull(result.Value);
+        Assert.Equal(7L, result.Value!.Position);
+        Assert.True(result.Value.EmailConfirmed);
+        Assert.Equal(WaitlistStatus.EmailConfirmed, result.Value.Status);
     }
 
     [Fact]
-    public async Task Handle_DoesNotRevealStoredStatus()
+    public async Task Handle_WithNonExistentEmail_ReturnsNotFound()
     {
         // Arrange
-        var email = "test@example.com";
-        var query = new GetWaitlistStatusQuery(email);
+        var query = new GetWaitlistStatusQuery("nonexistent@example.com");
 
-        _mockWaitlistRepo.Setup(r => r.GetTotalCount(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(100);
+        _mockWaitlistRepo.Setup(r => r.FindByEmail("nonexistent@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WaitlistEntity?)null);
 
         // Act
         var result = await _handler.Handle(query, CancellationToken.None);
 
         // Assert
-        Assert.True(result.IsSuccess);
-        Assert.NotNull(result.Value);
-        Assert.Equal(WaitlistStatus.Pending, result.Value!.Status);
-        Assert.Equal(0L, result.Value.Position);
-        _mockWaitlistRepo.Verify(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCode.NotFound, result.Error!.Code);
+        _mockWaitlistRepo.Verify(r => r.GetTotalCount(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

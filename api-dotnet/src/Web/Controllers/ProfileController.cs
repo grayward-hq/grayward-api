@@ -82,6 +82,6 @@ public async Task<ActionResult<Result<NotificationPreferencesDto>>> UpdateNotifi
     {
         var result = await _mediator.Send(new DeleteAccountCommand(), ct);
         return result.ToHttpResponse(this);
-        
+
     }
 }

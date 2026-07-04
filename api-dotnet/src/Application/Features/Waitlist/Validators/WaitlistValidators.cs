@@ -1,4 +1,5 @@
 using Application.Features.Waitlist.DTOs;
+using Application.Features.Waitlist.Commands;
 using FluentValidation;
 
 namespace Application.Features.Waitlist.Validators;
@@ -22,6 +23,11 @@ public class JoinWaitlistValidator : AbstractValidator<JoinWaitlistRequest>
             .MaximumLength(2000)
             .When(x => !string.IsNullOrWhiteSpace(x.Comments))
             .WithMessage("Comments must not exceed 2000 characters.");
+
+        RuleFor(x => x.ReferralCode)
+            .MaximumLength(32)
+            .When(x => !string.IsNullOrWhiteSpace(x.ReferralCode))
+            .WithMessage("Referral code must not exceed 32 characters.");
     }
 }
 
@@ -55,5 +61,17 @@ public class CancelWaitlistValidator : AbstractValidator<CancelWaitlistRequest>
         RuleFor(x => x.Token)
             .NotEmpty()
             .WithMessage("Cancellation token is required.");
+    }
+}
+
+public class RequestWaitlistCancellationValidator : AbstractValidator<RequestWaitlistCancellationCommand>
+{
+    public RequestWaitlistCancellationValidator()
+    {
+        RuleFor(x => x.Email)
+            .NotEmpty()
+            .MaximumLength(254)
+            .EmailAddress()
+            .WithMessage("Invalid email format.");
     }
 }

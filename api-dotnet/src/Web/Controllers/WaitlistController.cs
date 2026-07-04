@@ -43,7 +43,11 @@ public class WaitlistController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new JoinWaitlistCommand(request.Email, request.CompanyName, request.Comments), ct);
+            new JoinWaitlistCommand(
+                request.Email,
+                request.CompanyName,
+                request.Comments,
+                request.ReferralCode), ct);
         return result.ToHttpResponse(this);
     }
 
@@ -98,13 +102,32 @@ public class WaitlistController : ControllerBase
     }
 
     /// <summary>
-    /// Cancel waitlist entry.
+    /// Request a waitlist cancellation link by email.
     /// </summary>
-    /// <param name="request">Email to remove from waitlist.</param>
+    /// <param name="request">Email to send the cancellation link to.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Cancellation link request accepted.</response>
+    /// <response code="400">Invalid email.</response>
+    [HttpPost("cancel/request")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
+    public async Task<ActionResult<Result<MessageResponse>>> RequestCancellationLink(
+        [FromBody] RequestWaitlistCancellationRequest request,
+        CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new RequestWaitlistCancellationCommand(request.Email), ct);
+        return result.ToHttpResponse(this);
+    }
+
+    /// <summary>
+    /// Cancel waitlist entry using a signed cancellation token.
+    /// </summary>
+    /// <param name="request">Email and cancellation token.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Successfully removed from waitlist.</response>
-    /// <response code="400">Invalid email.</response>
-    /// <response code="404">Email not found on waitlist.</response>
+    /// <response code="400">Invalid email or token.</response>
+    /// <response code="401">Invalid or expired cancellation token.</response>
     [HttpPost("cancel")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
