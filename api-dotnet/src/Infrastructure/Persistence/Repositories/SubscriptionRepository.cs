@@ -13,22 +13,24 @@ public sealed class SubscriptionRepository(VulnWatchDbContext db)
     {
         var now = DateTimeOffset.UtcNow;
         return await Db.Subscriptions
-            .FromSql($@"SELECT * FROM subscriptions
-                        WHERE user_id = {userId}
-                          AND status = 'Active'
-                          AND current_period_start <= {now}
-                          AND current_period_end >= {now}
-                        LIMIT 1 FOR UPDATE")
+            .FromSqlInterpolated($@"
+                SELECT *
+                FROM ""Subscriptions""
+                WHERE ""UserId"" = {userId}
+                AND ""Status"" = {"Active"}
+                AND ""CurrentPeriodStart"" <= {now}
+                AND ""CurrentPeriodEnd"" >= {now}
+                FOR UPDATE")
             .FirstOrDefaultAsync(ct);
     }
 
     public Task<Subscription?> GetActiveByUser(Guid userId, CancellationToken ct = default)
     {
-        var now = DateTimeOffset.UtcNow;  
-        return Db.Subscriptions.FirstOrDefaultAsync(d =>  
-            d.UserId == userId &&  
-            d.Status == SubscriptionStatus.Active &&  
-            d.CurrentPeriodStart <= now &&  
-            d.CurrentPeriodEnd >= now, ct);  
+        var now = DateTimeOffset.UtcNow;
+        return Db.Subscriptions.FirstOrDefaultAsync(d =>
+            d.UserId == userId &&
+            d.Status == SubscriptionStatus.Active &&
+            d.CurrentPeriodStart <= now &&
+            d.CurrentPeriodEnd >= now, ct);
     }
 }
