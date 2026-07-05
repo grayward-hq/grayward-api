@@ -271,6 +271,7 @@ builder.Services.AddHttpClient("slack");
 builder.Services.AddScoped<ISlackService, SlackService>();
 builder.Services.AddSingleton<IPlanCatalog, PlanCatalog>();
 builder.Services.AddScoped<IQuotaService, QuotaService>();
+builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IScanJobFactory, ScanJobFactory>();
 builder.Services.AddScoped<IIntegrationRepository, IntegrationRepository>();
 builder.Services.AddDataProtection()
