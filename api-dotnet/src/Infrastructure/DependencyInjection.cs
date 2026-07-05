@@ -182,6 +182,7 @@ namespace Infrastructure
             services.AddScoped<ISlackService, SlackService>();
             services.AddSingleton<IPlanCatalog, PlanCatalog>();
             services.AddScoped<IQuotaService, QuotaService>();
+            services.AddScoped<IUserService, UserService>();
             services.AddScoped<IScanJobFactory, ScanJobFactory>();
             services.AddScoped<IIntegrationRepository, IntegrationRepository>();
 
