@@ -27,7 +27,7 @@ public final class TrivyCommandBuilder {
     private final String outputFile;
 
     @Builder.Default
-    private final String severity = "MEDIUM,HIGH,CRITICAL";
+    private final String severity = "LOW,MEDIUM,HIGH,CRITICAL";
 
     @Builder.Default
     private final String scanners = "vuln,secret";
