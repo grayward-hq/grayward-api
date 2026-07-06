@@ -2,6 +2,7 @@ package com.vulnwatch.worker.persistence;
 
 import com.vulnwatch.worker.model.RepositoryMetadata;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -45,7 +46,7 @@ public class RepositoryMetadataRepository {
                     UUID.fromString(repositoryId)
             );
             return Optional.ofNullable(metadata);
-        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+        } catch (EmptyResultDataAccessException e) {
             log.warn("No MonitoredRepository row found [repositoryId={}]", repositoryId);
             return Optional.empty();
         }
