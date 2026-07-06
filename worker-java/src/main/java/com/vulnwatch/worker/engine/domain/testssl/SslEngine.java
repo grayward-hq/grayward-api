@@ -51,7 +51,6 @@ public class SslEngine implements Scanner {
 
         List<String> command = List.of(
                 binary,
-                "-4",
                 "-U",
                 "-n", "min",
                 "--jsonfile", outputFileName,
