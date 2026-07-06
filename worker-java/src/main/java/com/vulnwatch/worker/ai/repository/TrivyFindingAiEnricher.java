@@ -26,7 +26,8 @@ import java.util.List;
 public class TrivyFindingAiEnricher {
 
     private static final AiResult UNAVAILABLE =
-            new AiResult("AI enrichment not available", List.of("Review finding manually."), null);
+            new AiResult("AI enrichment not available",
+                    List.of("Review finding manually."), null);
 
     private final ChatClient chatClient;
 
