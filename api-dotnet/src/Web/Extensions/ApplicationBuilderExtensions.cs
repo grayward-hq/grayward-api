@@ -7,8 +7,7 @@ namespace Web.Extensions
 {
     public static class ApplicationBuilderExtensions
     {
-        public static WebApplication UseWebPipeline(
-    this WebApplication app)
+        public static WebApplication UseWebPipeline(this WebApplication app)
         {
             app.UseSwagger();
             app.UseSwaggerUI(options =>
@@ -30,8 +29,7 @@ namespace Web.Extensions
             return app;
         }
 
-public static WebApplication MapWebEndpoints(
-    this WebApplication app)
+        public static WebApplication MapWebEndpoints(this WebApplication app)
         {
             app.MapHub<ScanHub>("/hubs/scans");
             app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
@@ -43,18 +41,17 @@ public static WebApplication MapWebEndpoints(
                 Predicate = check => check.Tags.Contains("ready"),
                 ResponseWriter = HealthResponse.WriteAsync
             });
-
+            
             return app;
         }
 
-public static async Task ApplyMigrationsAsync(
-    this WebApplication app)
+        public static async Task ApplyMigrationsAsync(this WebApplication app)
         {
             using (var scope = app.Services.CreateScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<VulnWatchDbContext>();
                 if (dbContext.Database.IsRelational())
-                    dbContext.Database.Migrate();
+                    await dbContext.Database.MigrateAsync();
                 else
                     dbContext.Database.EnsureCreated();
             }
