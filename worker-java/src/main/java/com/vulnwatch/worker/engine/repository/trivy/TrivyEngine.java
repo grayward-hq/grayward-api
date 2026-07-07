@@ -19,16 +19,16 @@ import java.util.List;
 import java.util.Map;
 
 @Slf4j
-@Component
+//@Component
 @RequiredArgsConstructor
 public class TrivyEngine implements Scanner {
     private final CliExecutor cliExecutor;
     private final TrivyParser trivyParser;
 
-    @Value("${tools.testssl.timeout-seconds:150}")
+    @Value("${tools.trivy.timeout-seconds:150}")
     private int timeoutSeconds;
 
-    @Value("${tools.testssl.binary:trivy}")
+    @Value("${tools.trivy.binary:trivy}")
     private String binary;
 
     @Value("${tools.temp:/Users/mitchelntuen/temp}")
