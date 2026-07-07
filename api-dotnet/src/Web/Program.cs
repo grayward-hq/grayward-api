@@ -24,7 +24,7 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.ApplyMigrationsAsync();
+    await app.ApplyMigrationsAsync();
 }
 
 app.UseWebPipeline();

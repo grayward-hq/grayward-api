@@ -131,11 +131,13 @@ namespace Web.Extensions
             IConfiguration configuration)
         {
             var redisConfig = configuration.GetValue<string>("Redis:Configuration") ?? "localhost:6379";
+            var pgConnection = configuration.GetConnectionString("DefaultConnectionString")
+                ?? configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("Default database connection string is not configured.");
 
             services.AddHealthChecks()
                 .AddNpgSql(
-                    configuration.GetConnectionString("DefaultConnectionString")
-                        ?? configuration.GetConnectionString("DefaultConnection"),
+                    pgConnection,
                     name: "postgres",
                     tags: ["db", "ready"])
                 .AddRedis(

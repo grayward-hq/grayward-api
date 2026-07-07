@@ -15,8 +15,8 @@ namespace Web.Extensions
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
                 options.RoutePrefix = "docs";
             });
-            app.UseHttpsRedirection();
             app.UseForwardedHeaders();
+            app.UseHttpsRedirection();
             app.UseCors("DefaultCors");
             app.UseMiddleware<ExceptionHandlingMiddleware>();
             app.UseMiddleware<RequestLoggingMiddleware>();
