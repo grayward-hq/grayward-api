@@ -7,18 +7,20 @@ import com.vulnwatch.worker.enums.SurfaceType;
 import com.vulnwatch.worker.model.AiResult;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.orchestrator.mapper.SurfaceTypeMapper;
 import com.vulnwatch.worker.retry.ScannerRetryPolicy;
 import com.vulnwatch.worker.state.SurfaceStateManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.StructuredTaskScope;
 
 /**
- * Replaces ParallelScanner for domain scans using Java 21 StructuredTaskScope.
+ * Coordinates and executes parallel target domain vulnerability scans.
+ * Dynamically filters pipeline targets based on incoming ScanJob request criteria.
  */
 @Slf4j
 @Component
@@ -29,46 +31,58 @@ public class DomainScanOrchestrator {
     private final ScannerRetryPolicy retryPolicy;
     private final DomainCircuitBreakerAiEnricher surfaceAiEnricher;
     private final SurfaceStateManager surfaceStateManager;
+    private final SurfaceTypeMapper surfaceTypeMapper;
 
-    /**
-     * Runs all scanners in parallel, each followed immediately by AI enrichment.
-     *
-     * @return OrchestratorResult containing paired engine + AI results aligned by index.
-     */
     @SuppressWarnings("preview")
     public OrchestratorResult scan(ScanJob job) {
-        log.info("Orchestrator starting [scanId={} scanners={}]", job.scanId(), scanners.size());
+        String scanId = job.scanId();
+        Set<SurfaceType> requestedSurfaces = surfaceTypeMapper.resolve(job);
+        List<Scanner> activeScanners = selectScanners(scanId, requestedSurfaces);
 
-        List<EngineResult> engineResults = new ArrayList<>(scanners.size());
-        List<AiResult> aiResults = new ArrayList<>(scanners.size());
+        log.info("Orchestrator starting [scanId={} requestedSurfaces={} targeted={}]",
+                scanId, requestedSurfaces.isEmpty() ? "ALL" : requestedSurfaces, activeScanners.size());
 
         try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
 
-            // Fork virtual threads for each scanner pipeline
-            List<StructuredTaskScope.Subtask<SurfaceResult>> subtasks = scanners.stream()
+            // Fork execution flows concurrently into virtual thread paths
+            List<StructuredTaskScope.Subtask<SurfaceResult>> subtasks = activeScanners.stream()
                     .map(scanner -> scope.fork(() -> processSurface(scanner, job)))
                     .toList();
 
-            scope.join();
-            scope.throwIfFailed(e -> new RuntimeException("Orchestrator scope encountered fatal system failure [scanId=%s]".formatted(job.scanId()), e));
+            scope.join().throwIfFailed(e -> new RuntimeException(
+                    "Orchestrator scope encountered fatal system failure [scanId=%s]".formatted(scanId), e));
 
-            // Safely unpack results sequentially in original scanner order (No concurrency overhead)
-            for (StructuredTaskScope.Subtask<SurfaceResult> subtask : subtasks) {
-                SurfaceResult sr = subtask.get();
-                engineResults.add(sr.engineResult());
-                aiResults.add(sr.aiResult());
-            }
+            // Map subtask results directly into immutable output lists
+            List<EngineResult> engineResults = subtasks.stream().map(s -> s.get().engineResult()).toList();
+            List<AiResult> aiResults = subtasks.stream().map(s -> s.get().aiResult()).toList();
+
+            log.info("Orchestrator complete [scanId={} surfaces={} succeeded={}]",
+                    scanId, engineResults.size(), engineResults.stream().filter(EngineResult::success).count());
+
+            return new OrchestratorResult(engineResults, aiResults);
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Orchestrator interrupted [scanId={}]", job.scanId(), e);
+            log.error("Orchestrator execution path interrupted [scanId={}]", scanId, e);
             throw new RuntimeException("Orchestrator execution interrupted", e);
         }
+    }
 
-        log.info("Orchestrator complete [scanId={} surfaces={} succeeded={}]",
-                job.scanId(), engineResults.size(), engineResults.stream().filter(EngineResult::success).count());
+    private List<Scanner> selectScanners(String scanId, Set<SurfaceType> requested) {
+        if (requested.isEmpty()) {
+            return scanners;
+        }
 
-        return new OrchestratorResult(engineResults, aiResults);
+        List<Scanner> targeted = scanners.stream()
+                .filter(s -> requested.contains(s.surfaceType()))
+                .toList();
+
+        if (targeted.isEmpty()) {
+            log.warn("Requested surfaces {} matched no registered scanners [scanId={}] — running all.", requested, scanId);
+            return scanners;
+        }
+
+        return targeted;
     }
 
     private SurfaceResult processSurface(Scanner scanner, ScanJob job) {
@@ -79,42 +93,25 @@ public class DomainScanOrchestrator {
         log.debug("Surface pipeline starting [scanId={} surface={}]", scanId, surface.name());
 
         try {
-            // Step 1: Execute scan via Spring-Retry Proxy
             EngineResult engineResult = retryPolicy.execute(scanner, job);
-
             if (engineResult == null) {
                 log.warn("Surface permanently failed retry attempts [scanId={} surface={}]", scanId, surface.name());
                 return new SurfaceResult(EngineResult.failure(surface, "Scanner exhausted all retries"), null);
             }
 
-            // Step 2: Execute AI Enrichment via Circuit-Breaker Proxy
             AiResult aiResult = surfaceAiEnricher.enrich(job, engineResult, surface);
-            log.debug("Surface pipeline complete [scanId={} surface={} aiEnriched={}]", scanId, surface.name(), aiResult != null);
-
             return new SurfaceResult(engineResult, aiResult);
 
         } catch (Exception e) {
-            log.error("Uncaught processing failure in surface pipeline [scanId={} surface={}]: {}", scanId, surface.name(), e.getMessage(), e);
-            return new SurfaceResult(EngineResult.failure(surface, "Unexpected pipeline crash: %s".formatted(e.getMessage())), null);
+            log.error("Uncaught execution crash in surface pipeline [scanId={} surface={}]: {}", scanId, surface.name(), e.getMessage(), e);
+            return new SurfaceResult(EngineResult.failure(surface, "Pipeline crash: %s".formatted(e.getMessage())), null);
         }
     }
-
 
     record SurfaceResult(EngineResult engineResult, AiResult aiResult) {}
 
     public record OrchestratorResult(List<EngineResult> engineResults, List<AiResult> aiResults) {
-        public boolean hasAnySuccess() {
-            return engineResults.stream().anyMatch(EngineResult::success);
-        }
-
-        public boolean allFailed() {
-            return engineResults.stream().noneMatch(EngineResult::success);
-        }
-    }
-
-    public List<SurfaceType> registeredSurfaces() {
-        return scanners.stream()
-                .map(Scanner::surfaceType)
-                .toList();
+        public boolean hasAnySuccess() { return engineResults.stream().anyMatch(EngineResult::success); }
+        public boolean allFailed() { return engineResults.stream().noneMatch(EngineResult::success); }
     }
 }
