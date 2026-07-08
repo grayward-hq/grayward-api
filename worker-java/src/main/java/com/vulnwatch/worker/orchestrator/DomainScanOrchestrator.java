@@ -15,7 +15,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.StructuredTaskScope;
 
 /**
@@ -33,27 +35,43 @@ public class DomainScanOrchestrator {
     private final SurfaceStateManager surfaceStateManager;
     private final SurfaceTypeMapper surfaceTypeMapper;
 
-    // ThreadLocal ensures that concurrent scan requests don't corrupt each other's active surface lists
-    private final ThreadLocal<List<SurfaceType>> activeSurfacesThreadLocal = new ThreadLocal<>();
+    // Track active surfaces per Scan ID so downstream processors can read them out of thread bounds
+    private final Map<String, List<SurfaceType>> scanContextCache = new ConcurrentHashMap<>();
+    private final ThreadLocal<String> currentScanIdThreadLocal = new ThreadLocal<>();
+
+    /**
+     * Pre-primes the scan context before the scan runs so initialization tools
+     * like state machines get an accurate preview of selected surfaces.
+     */
+    public List<SurfaceType> primeScanContext(String scanId, Set<SurfaceType> requestedSurfaces) {
+        currentScanIdThreadLocal.set(scanId);
+
+        List<Scanner> activeScanners = selectScanners(scanId, requestedSurfaces);
+        List<SurfaceType> selected = activeScanners.stream()
+                .map(Scanner::surfaceType)
+                .toList();
+
+        scanContextCache.put(scanId, selected);
+        return selected;
+    }
 
     @SuppressWarnings("preview")
     public OrchestratorResult scan(ScanJob job) {
         String scanId = job.scanId();
+        currentScanIdThreadLocal.set(scanId);
+
+        // Ensure cache is populated even if primeScanContext wasn't called externally (e.g., in unit tests)
         Set<SurfaceType> requestedSurfaces = surfaceTypeMapper.resolve(job);
         List<Scanner> activeScanners = selectScanners(scanId, requestedSurfaces);
 
-        // Map and preserve the exactly selected surfaces for this thread context
-        List<SurfaceType> selected = activeScanners.stream()
-                .map(Scanner::surfaceType)
-                .toList();
-        activeSurfacesThreadLocal.set(selected);
+        List<SurfaceType> selected = activeScanners.stream().map(Scanner::surfaceType).toList();
+        scanContextCache.put(scanId, selected);
 
         log.info("Orchestrator starting [scanId={} requestedSurfaces={} targeted={}]",
                 scanId, requestedSurfaces.isEmpty() ? "ALL" : requestedSurfaces, activeScanners.size());
 
         try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
 
-            // Fork execution flows concurrently into virtual thread paths
             List<StructuredTaskScope.Subtask<SurfaceResult>> subtasks = activeScanners.stream()
                     .map(scanner -> scope.fork(() -> processSurface(scanner, job)))
                     .toList();
@@ -61,7 +79,6 @@ public class DomainScanOrchestrator {
             scope.join().throwIfFailed(e -> new RuntimeException(
                     "Orchestrator scope encountered fatal system failure [scanId=%s]".formatted(scanId), e));
 
-            // Map subtask results directly into immutable output lists
             List<EngineResult> engineResults = subtasks.stream().map(s -> s.get().engineResult()).toList();
             List<AiResult> aiResults = subtasks.stream().map(s -> s.get().aiResult()).toList();
 
@@ -74,27 +91,27 @@ public class DomainScanOrchestrator {
             Thread.currentThread().interrupt();
             log.error("Orchestrator execution path interrupted [scanId={}]", scanId, e);
             throw new RuntimeException("Orchestrator execution interrupted", e);
-        } finally {
-            // Clean up ThreadLocal allocation to prevent memory leaks in the thread pool
-            activeSurfacesThreadLocal.remove();
         }
     }
 
-    /**
-     * Replaces the old global fallback method. It now dynamically returns the selected
-     * surfaces running on the current executing thread, falling back to all scanners
-     * if called outside an active scan context.
-     */
     public List<SurfaceType> registeredSurfaces() {
-        List<SurfaceType> currentActive = activeSurfacesThreadLocal.get();
-        if (currentActive != null) {
-            return currentActive;
+        String activeScanId = currentScanIdThreadLocal.get();
+        if (activeScanId != null) {
+            List<SurfaceType> cachedSurfaces = scanContextCache.get(activeScanId);
+            if (cachedSurfaces != null) {
+                return cachedSurfaces;
+            }
         }
 
-        // Fallback for initialization checks or if called outside a dynamic scan thread
         return scanners.stream()
                 .map(Scanner::surfaceType)
                 .toList();
+    }
+
+    public void clearScanContext(String scanId) {
+        scanContextCache.remove(scanId);
+        currentScanIdThreadLocal.remove();
+        log.debug("Cleared orchestrator cache context [scanId={}]", scanId);
     }
 
     private List<Scanner> selectScanners(String scanId, Set<SurfaceType> requested) {
