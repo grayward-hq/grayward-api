@@ -151,6 +151,6 @@ public class OWASPPersistence {
     }
 
     private String severityName(FindingSeverity severity) {
-        return severity != null ? severity.name() : "Low";
+        return severity != null ? severity.name() : FindingSeverity.NONE.name();
     }
 }
