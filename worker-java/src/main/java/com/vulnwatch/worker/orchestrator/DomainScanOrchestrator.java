@@ -33,11 +33,20 @@ public class DomainScanOrchestrator {
     private final SurfaceStateManager surfaceStateManager;
     private final SurfaceTypeMapper surfaceTypeMapper;
 
+    // ThreadLocal ensures that concurrent scan requests don't corrupt each other's active surface lists
+    private final ThreadLocal<List<SurfaceType>> activeSurfacesThreadLocal = new ThreadLocal<>();
+
     @SuppressWarnings("preview")
     public OrchestratorResult scan(ScanJob job) {
         String scanId = job.scanId();
         Set<SurfaceType> requestedSurfaces = surfaceTypeMapper.resolve(job);
         List<Scanner> activeScanners = selectScanners(scanId, requestedSurfaces);
+
+        // Map and preserve the exactly selected surfaces for this thread context
+        List<SurfaceType> selected = activeScanners.stream()
+                .map(Scanner::surfaceType)
+                .toList();
+        activeSurfacesThreadLocal.set(selected);
 
         log.info("Orchestrator starting [scanId={} requestedSurfaces={} targeted={}]",
                 scanId, requestedSurfaces.isEmpty() ? "ALL" : requestedSurfaces, activeScanners.size());
@@ -65,7 +74,27 @@ public class DomainScanOrchestrator {
             Thread.currentThread().interrupt();
             log.error("Orchestrator execution path interrupted [scanId={}]", scanId, e);
             throw new RuntimeException("Orchestrator execution interrupted", e);
+        } finally {
+            // Clean up ThreadLocal allocation to prevent memory leaks in the thread pool
+            activeSurfacesThreadLocal.remove();
         }
+    }
+
+    /**
+     * Replaces the old global fallback method. It now dynamically returns the selected
+     * surfaces running on the current executing thread, falling back to all scanners
+     * if called outside an active scan context.
+     */
+    public List<SurfaceType> registeredSurfaces() {
+        List<SurfaceType> currentActive = activeSurfacesThreadLocal.get();
+        if (currentActive != null) {
+            return currentActive;
+        }
+
+        // Fallback for initialization checks or if called outside a dynamic scan thread
+        return scanners.stream()
+                .map(Scanner::surfaceType)
+                .toList();
     }
 
     private List<Scanner> selectScanners(String scanId, Set<SurfaceType> requested) {
