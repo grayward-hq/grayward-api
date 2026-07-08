@@ -35,7 +35,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ScanJobStateMachine {
 
-    private static final String KEY_PREFIX = "scan-state:";
+    @Value("${worker.state.scan-key-prefix:scan-state:}")
+    private String KEY_PREFIX;
 
     private final JedisPooled jedis;
     private final SurfaceStateManager surfaceStateManager;
@@ -59,13 +60,13 @@ public class ScanJobStateMachine {
     /**
      * Derives the terminal job state from all surface states and writes it.
      * Called by ScanOrchestrator once all surface virtual threads complete.
-     *
+     * <p>
      * Rules:
-     *   - All surfaces SUCCESS/SUCCESS_NO_AI → COMPLETED
-     *   - Mix of success and PERMANENTLY_FAILED → COMPLETED (partial results still published)
-     *   - All surfaces PERMANENTLY_FAILED → FAILED
+     * - All surfaces SUCCESS/SUCCESS_NO_AI → COMPLETED
+     * - Mix of success and PERMANENTLY_FAILED → COMPLETED (partial results still published)
+     * - All surfaces PERMANENTLY_FAILED → FAILED
      */
-    public ScanStatus advance(String scanId) {
+    public void advance(String scanId) {
         Map<SurfaceType, SurfaceStateSnapshot> snapshots =
                 surfaceStateManager.getAllSnapshots(scanId);
 
@@ -93,7 +94,6 @@ public class ScanJobStateMachine {
         log.info("Job advanced [scanId={} total={} succeeded={} failed={} → {}]",
                 scanId, total, succeeded, failed, derived.name());
 
-        return derived;
     }
 
     /**
