@@ -16,6 +16,7 @@ import com.vulnwatch.worker.model.EngineResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -144,6 +145,7 @@ public class DomainPersistence {
      * replayed by hand and succeeds — the old "probe failed" row is stale and
      * must not linger next to the new, real result.
      */
+    @Transactional
     public DomainFinding replaceFindingForSurface(
             String scanId,
             SurfaceType surface,
