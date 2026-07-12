@@ -34,11 +34,12 @@ public final class TrivyCommandBuilder {
 
     public static class TrivyCommandBuilderBuilder {
 
-        /** Convenience method to supply both credentials at once. */
-        public TrivyCommandBuilderBuilder credentials(String username, String password) {
+        /**
+         * Convenience method to supply both credentials at once.
+         */
+        public void credentials(String username, String password) {
             this.username = username;
             this.password = password;
-            return this;
         }
 
         /** Overriding the final build execution to validate inputs and output the raw arg List. */
