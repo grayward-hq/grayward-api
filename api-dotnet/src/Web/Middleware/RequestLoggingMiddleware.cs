@@ -17,7 +17,7 @@ public class RequestLoggingMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         var request = context.Request;
-        var stopwatch = Stopwatch.StartNew();;
+        var stopwatch = Stopwatch.StartNew();
 
         using (LogContext.PushProperty("RequestId", context.TraceIdentifier))
         {

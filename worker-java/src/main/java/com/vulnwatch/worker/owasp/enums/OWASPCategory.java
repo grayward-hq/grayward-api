@@ -83,4 +83,13 @@ public enum OWASPCategory {
     private final String displayName;
     private final String description;
 
+    public static OWASPCategory fromCode(String code) {
+        for (OWASPCategory c : values()) {
+            if (c.code.equalsIgnoreCase(code)) {
+                return c;
+            }
+        }
+        throw new IllegalArgumentException("Unknown OWASP category code: %s".formatted(code));
+    }
+
 }
