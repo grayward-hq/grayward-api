@@ -1,9 +1,9 @@
 package com.vulnwatch.worker.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -20,9 +20,7 @@ public class HttpClientConfig {
     }
 
     @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper()
-                // ensure modern Java 8 time types parse correctly
-                .registerModule(new JavaTimeModule());
+    public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder) {
+        return builder.build();
     }
 }
