@@ -7,6 +7,7 @@ import com.vulnwatch.worker.model.AiResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -64,6 +65,7 @@ public class RepositoryFindingsPersistence {
         }
     }
 
+    @Transactional
     public void saveFindings(String scanId, List<TrivyEngineResult> findings, List<AiResult> aiResults) {
         try {
             for (int i = 0; i < findings.size(); i++) {
