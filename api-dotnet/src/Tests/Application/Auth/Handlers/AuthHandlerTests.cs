@@ -16,6 +16,7 @@ public class RegisterHandlerTests
     private readonly Mock<UserManager<User>> _userManager;
     private readonly Mock<INotificationPreferencesRepository> _notifPrefs;
     private readonly Mock<IEmailService> _email;
+    private readonly Mock<IUserService> _user;
     private readonly Mock<IConfiguration> _config;
     private readonly Mock<ILogger<RegisterHandler>> _logger;
     private readonly RegisterHandler _sut;
@@ -25,6 +26,10 @@ public class RegisterHandlerTests
         _userManager = MockUserManagerFactory.Create();
         _notifPrefs = new Mock<INotificationPreferencesRepository>();
         _email = new Mock<IEmailService>();
+        _user = new Mock<IUserService>();
+        _user.Setup(s => s.ProvisionNewUser(
+                It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Success(true));
         _config = new Mock<IConfiguration>();
         _logger = new Mock<ILogger<RegisterHandler>>();
 
@@ -33,8 +38,10 @@ public class RegisterHandlerTests
         _sut = new RegisterHandler(
             _userManager.Object,
             _notifPrefs.Object,
+            _user.Object,
             _email.Object,
-            _config.Object);
+            _config.Object,
+            _logger.Object);
     }
 
     [Fact]
