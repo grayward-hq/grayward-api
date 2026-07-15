@@ -16,6 +16,7 @@ import com.vulnwatch.worker.model.EngineResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -75,6 +76,10 @@ public class DomainPersistence {
             WHERE "Id" = ?
             """;
 
+    private static final String DELETE_FINDINGS_FOR_SURFACE = """
+            DELETE FROM "Findings" WHERE "ScanId" = ? AND "Surface" = ?
+            """;
+
 
     /**
      * Used whenever AI enrichment was unavailable or failed.
@@ -131,6 +136,37 @@ public class DomainPersistence {
         if (updated == 0) {
             log.warn("markFailed: no Scan row found [scanId={}]", scanId);
         }
+    }
+
+    /**
+     * Replaces whatever Finding row(s) exist for a single surface on a scan
+     * with a fresh one built from a newly-succeeded EngineResult. Used when a
+     * surface that previously exhausted retries and landed in the DLQ is later
+     * replayed by hand and succeeds — the old "probe failed" row is stale and
+     * must not linger next to the new, real result.
+     */
+    @Transactional
+    public DomainFinding replaceFindingForSurface(
+            String scanId,
+            SurfaceType surface,
+            EngineResult freshResult,
+            AiResult enrichment) {
+
+        DomainFinding finding = assembleFindings(
+                scanId, List.of(freshResult), enrichment == null ? List.of() : List.of(enrichment)
+        ).getFirst();
+
+        try {
+            jdbc.update(DELETE_FINDINGS_FOR_SURFACE, uuid(scanId), surfaceLabel(surface));
+            insertFindings(List.of(finding));
+            log.info("Replaced Finding row after surface recovery [scanId={} surface={}]", scanId, surface);
+        } catch (Exception e) {
+            log.error("Failed to replace Finding row after surface recovery [scanId={} surface={}]",
+                    scanId, surface, e);
+            throw new RuntimeException("Failed to persist recovered surface finding for scan %s".formatted(scanId), e);
+        }
+
+        return finding;
     }
 
 

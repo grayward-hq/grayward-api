@@ -36,7 +36,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class RedisSurfaceStateManager implements SurfaceStateManager {
 
-    private static final String KEY_PREFIX  = "surface-state:";
+    @Value("${worker.state.surface-key-prefix:surface-state:}")
+    private String KEY_PREFIX;
+
     private static final String F_STATE = "state";
     private static final String F_RETRY = "retryCount";
     private static final String F_REASON = "failureReason";
