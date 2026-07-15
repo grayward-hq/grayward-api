@@ -102,6 +102,29 @@ public class WaitlistController : ControllerBase
     }
 
     /// <summary>
+    /// Resend the waitlist confirmation email for a pending entry.
+    /// </summary>
+    /// <param name="request">Email to resend the confirmation link to.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Resend request accepted (generic response to prevent enumeration).</response>
+    /// <response code="400">Invalid email.</response>
+    [HttpPost("resend-confirmation")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
+    public async Task<ActionResult<Result<MessageResponse>>> ResendConfirmation(
+        [FromBody] ResendWaitlistConfirmationRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Email))
+            return Result<MessageResponse>.Failure(
+                Error.Validation("Email is required")).ToHttpResponse(this);
+
+        var result = await _mediator.Send(
+            new ResendWaitlistConfirmationCommand(request.Email), ct);
+        return result.ToHttpResponse(this);
+    }
+
+    /// <summary>
     /// Request a waitlist cancellation link by email.
     /// </summary>
     /// <param name="request">Email to send the cancellation link to.</param>
