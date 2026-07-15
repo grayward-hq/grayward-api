@@ -27,6 +27,9 @@ public class RegisterHandlerTests
         _notifPrefs = new Mock<INotificationPreferencesRepository>();
         _email = new Mock<IEmailService>();
         _user = new Mock<IUserService>();
+        _user.Setup(s => s.ProvisionNewUser(
+                It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Success(true));
         _config = new Mock<IConfiguration>();
         _logger = new Mock<ILogger<RegisterHandler>>();
 
