@@ -67,7 +67,7 @@ public class DomainJobProcessor implements JobProcessor {
     }
 
     private void executeScanPipeline(ScanJob job) {
-        describeJobBestEffort(job);
+//        describeJobBestEffort(job);
 
         OrchestratorResult result = scanOrchestrator.scan(job);
 
