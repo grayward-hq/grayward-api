@@ -27,6 +27,7 @@ public class VerifyWaitlistEmailHandlerTests
         _mockLogger = new Mock<ILogger<VerifyWaitlistEmailHandler>>();
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
+        _mockConfig.Setup(c => c["FrontendUrl:WaitlistJoin"]).Returns("http://localhost:3000/waitlist");
         _handler = new VerifyWaitlistEmailHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, _mockConfig.Object, _mockLogger.Object);
     }

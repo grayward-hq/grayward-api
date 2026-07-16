@@ -100,6 +100,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         if (isReactivation)
         {
             entry.UpdateCompanyName(cmd.CompanyName);
+            entry.UpdateComments(cmd.Comments);
             entry.Reactivate(referrer?.Id);
         }
 
@@ -134,9 +135,9 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
         try
         {
-            var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
+            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, normalizedEmail, confirmationToken);
             var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
+            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, normalizedEmail, cancellationToken);
 
             await SendConfirmationEmail(normalizedEmail, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
@@ -155,7 +156,10 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             {
                 _waitlistRepo.Remove(entry);
             }
-            await _waitlistRepo.SaveChangesAsync(ct);
+
+            // Not ct: the rollback must persist even when the caller has disconnected and
+            // cancelled the request, otherwise the entry is stranded with no email sent.
+            await _waitlistRepo.SaveChangesAsync(CancellationToken.None);
 
             return Result<WaitlistResponse>.Failure(
                 Error.Validation("Could not send confirmation email. Please verify your address and try again."));
@@ -177,20 +181,6 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             rng.GetBytes(bytes);
         }
         return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
-    }
-
-    private string BuildConfirmationLink(string email, string token)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
-    }
-
-    private string BuildCancellationLink(string email, string token)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private async Task SendConfirmationEmail(

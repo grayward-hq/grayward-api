@@ -82,7 +82,7 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         }
 
         var livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
-        var referralLink = BuildReferralLink(entry.ReferralCode!);
+        var referralLink = WaitlistLinks.BuildReferralLink(_config, entry.ReferralCode!);
 
         // Post-confirmation email with the claimed position and referral link. Best-effort:
         // a mail failure must not fail the confirmation (the data is also in the API response).
@@ -167,10 +167,4 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         return Convert.ToHexString(bytes)[..10];
     }
 
-    private string BuildReferralLink(string referralCode)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistJoin"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
-    }
 }

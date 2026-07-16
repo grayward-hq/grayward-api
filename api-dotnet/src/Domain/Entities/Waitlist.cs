@@ -119,6 +119,7 @@ public class Waitlist : EntityBase
         ReferralCode = null;
         ReferralCount = 0;
         ReferralPosition = InitialReferralPosition;
+        LastReferralAt = null;
         ReferredByWaitlistId = referredByWaitlistId;
         Touch();
     }
@@ -132,6 +133,12 @@ public class Waitlist : EntityBase
     public void UpdateCompanyName(string? companyName)
     {
         CompanyName = companyName;
+        Touch();
+    }
+
+    public void UpdateComments(string? comments)
+    {
+        Comments = comments;
         Touch();
     }
 

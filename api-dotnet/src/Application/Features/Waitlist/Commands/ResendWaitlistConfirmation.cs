@@ -81,9 +81,9 @@ public class ResendWaitlistConfirmationHandler
 
         try
         {
-            var confirmLink = BuildConfirmationLink(normalizedEmail, confirmationToken);
+            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, normalizedEmail, confirmationToken);
             var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = BuildCancellationLink(normalizedEmail, cancellationToken);
+            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, normalizedEmail, cancellationToken);
 
             await SendConfirmationEmail(normalizedEmail, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email resent for [{emailHash}]", emailHash);
@@ -118,20 +118,6 @@ public class ResendWaitlistConfirmationHandler
             rng.GetBytes(bytes);
         }
         return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
-    }
-
-    private string BuildConfirmationLink(string email, string token)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistVerify"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
-    }
-
-    private string BuildCancellationLink(string email, string token)
-    {
-        var baseUrl = _config["FrontendUrl:WaitlistCancel"] ?? _config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
     }
 
     private async Task SendConfirmationEmail(
