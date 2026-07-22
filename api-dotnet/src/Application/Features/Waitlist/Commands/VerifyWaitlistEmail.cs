@@ -18,6 +18,7 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
     private readonly IHttpContextAccessor _http;
+    private readonly IUnitOfWork _uow;
     private readonly ILogger<VerifyWaitlistEmailHandler> _logger;
 
     public VerifyWaitlistEmailHandler(
@@ -25,12 +26,14 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         IEmailService emailService,
         IConfiguration config,
         IHttpContextAccessor http,
+        IUnitOfWork uow,
         ILogger<VerifyWaitlistEmailHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
         _emailService = emailService;
         _config = config;
         _http = http;
+        _uow = uow;
         _logger = logger;
     }
 
@@ -62,27 +65,38 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         // Claim the queue slot and referral code now that the email is confirmed.
         var sequence = await _waitlistRepo.GetNextPosition(ct);
         var referralCode = await GenerateUniqueReferralCode(ct);
-        entry.ConfirmEmail(sequence, referralCode);
-        _waitlistRepo.Update(entry);
-        await _waitlistRepo.SaveChangesAsync(ct);
 
-        // Credit the referrer only now that this is a confirmed signup. A failure here must not
-        // fail the user's own confirmation, so it is best-effort and logged.
-        if (entry.ReferredByWaitlistId is Guid referrerId)
+        // Confirm the entry and credit the referrer atomically, in one transaction. The referral
+        // bump previously ran best-effort AFTER the confirmation committed, so a crash in between
+        // permanently lost the credit. Now both commit together or not at all — if anything here
+        // fails the whole thing rolls back and the caller retries verification (the token stays
+        // valid until a confirmation actually commits), so credit can no longer be silently lost.
+        try
         {
-            try
+            await _uow.InTransaction(async token =>
             {
-                var bumped = await _waitlistRepo.ApplyReferralBump(referrerId, ct);
-                _logger.LogInformation(
-                    "Referral credit for referrer {referrerId} after confirmation by {waitlistEntryId}: applied={bumped}",
-                    referrerId, entry.Id, bumped);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Failed to apply referral credit for referrer {referrerId} after confirmation by {waitlistEntryId}",
-                    referrerId, entry.Id);
-            }
+                entry.ConfirmEmail(sequence, referralCode);
+                _waitlistRepo.Update(entry);
+                await _waitlistRepo.SaveChangesAsync(token);
+
+                if (entry.ReferredByWaitlistId is Guid referrerId)
+                {
+                    var bumped = await _waitlistRepo.ApplyReferralBump(referrerId, token);
+                    _logger.LogInformation(
+                        "Referral credit for referrer {referrerId} after confirmation by {waitlistEntryId}: applied={bumped}",
+                        referrerId, entry.Id, bumped);
+                }
+
+                return true;
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to atomically confirm entry {waitlistEntryId} and apply referral credit; rolled back.",
+                entry.Id);
+            return Result<WaitlistResponse>.Failure(
+                Error.Validation("Could not complete verification. Please try again."));
         }
 
         var livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
@@ -102,7 +116,7 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
             _logger.LogError(ex, "Failed to send post-confirmation email to {waitlistEntryId}", entry.Id);
         }
 
-        _logger.LogInformation("Email confirmed for: {email}", cmd.Email);
+        _logger.LogInformation("Email confirmed for entry {waitlistEntryId}.", entry.Id);
 
         return Result<WaitlistResponse>.Success(
             new WaitlistResponse(

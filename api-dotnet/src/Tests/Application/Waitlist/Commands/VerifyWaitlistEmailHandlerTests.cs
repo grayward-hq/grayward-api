@@ -18,6 +18,7 @@ public class VerifyWaitlistEmailHandlerTests
     private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<IConfiguration> _mockConfig;
     private readonly Mock<IHttpContextAccessor> _mockHttp;
+    private readonly Mock<IUnitOfWork> _mockUow;
     private readonly Mock<ILogger<VerifyWaitlistEmailHandler>> _mockLogger;
     private readonly VerifyWaitlistEmailHandler _handler;
 
@@ -27,13 +28,17 @@ public class VerifyWaitlistEmailHandlerTests
         _mockEmailService = new Mock<IEmailService>();
         _mockConfig = new Mock<IConfiguration>();
         _mockHttp = new Mock<IHttpContextAccessor>();
+        _mockUow = new Mock<IUnitOfWork>();
         _mockLogger = new Mock<ILogger<VerifyWaitlistEmailHandler>>();
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
         _mockConfig.Setup(c => c["FrontendUrl:WaitlistJoin"]).Returns("http://localhost:3000/waitlist");
+        // Run the transactional work inline (no real transaction in unit tests).
+        _mockUow.Setup(u => u.InTransaction(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<bool>> work, CancellationToken token) => work(token));
         _handler = new VerifyWaitlistEmailHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, _mockConfig.Object,
-            _mockHttp.Object, _mockLogger.Object);
+            _mockHttp.Object, _mockUow.Object, _mockLogger.Object);
     }
 
     [Fact]
@@ -108,7 +113,8 @@ public class VerifyWaitlistEmailHandlerTests
             .Returns(Task.CompletedTask);
 
         var handler = new VerifyWaitlistEmailHandler(
-            _mockWaitlistRepo.Object, _mockEmailService.Object, config, _mockHttp.Object, _mockLogger.Object);
+            _mockWaitlistRepo.Object, _mockEmailService.Object, config,
+            _mockHttp.Object, _mockUow.Object, _mockLogger.Object);
 
         // Act
         var result = await handler.Handle(new VerifyWaitlistEmailCommand(email, token), CancellationToken.None);
@@ -148,6 +154,37 @@ public class VerifyWaitlistEmailHandlerTests
         // Assert
         Assert.True(result.IsSuccess);
         _mockWaitlistRepo.Verify(r => r.ApplyReferralBump(referrerId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenReferralBumpFails_ReturnsFailureAndDoesNotSendEmail()
+    {
+        // Arrange: the referral bump throws inside the transaction. Because confirmation and credit
+        // are now atomic, the whole thing rolls back — the caller gets a retryable failure rather
+        // than a confirmed user whose referrer was silently never credited (issue #260).
+        var referrerId = Guid.NewGuid();
+        var email = "referred@example.com";
+        var token = "valid-token-12345";
+        var entry = WaitlistEntity.Create(email, null, referredByWaitlistId: referrerId);
+        entry.GenerateEmailConfirmationToken(token);
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2L);
+        _mockWaitlistRepo.Setup(r => r.FindByReferralCode(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WaitlistEntity?)null);
+        _mockWaitlistRepo.Setup(r => r.ApplyReferralBump(referrerId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("transient db error"));
+
+        // Act
+        var result = await _handler.Handle(new VerifyWaitlistEmailCommand(email, token), CancellationToken.None);
+
+        // Assert: failure surfaced, no post-confirmation email sent.
+        Assert.False(result.IsSuccess);
+        _mockEmailService.Verify(
+            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
     }
 
     [Fact]
