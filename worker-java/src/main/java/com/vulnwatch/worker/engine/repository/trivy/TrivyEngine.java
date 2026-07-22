@@ -1,71 +1,74 @@
 package com.vulnwatch.worker.engine.repository.trivy;
 
 import com.vulnwatch.worker.CliExecutor;
-import com.vulnwatch.worker.engine.domain.Scanner;
-import com.vulnwatch.worker.engine.domain.nmap.models.NmapFindings;
 import com.vulnwatch.worker.engine.parsers.TrivyParser;
 import com.vulnwatch.worker.engine.repository.trivy.models.TrivyEngineResult;
-import com.vulnwatch.worker.enums.SurfaceType;
-import com.vulnwatch.worker.model.EngineResult;
-import com.vulnwatch.worker.model.ScanJob;
+import com.vulnwatch.worker.model.RepositoryMetadata;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+/**
+ * Runs Trivy against a repository. No longer implements the domain
+ * `Scanner` interface. Called directly by
+ * RepositoryScanOrchestrator instead.
+ */
 @Slf4j
-//@Component
+@Component
 @RequiredArgsConstructor
-public class TrivyEngine implements Scanner {
+public class TrivyEngine {
+
     private final CliExecutor cliExecutor;
     private final TrivyParser trivyParser;
 
-    @Value("${tools.trivy.timeout-seconds:150}")
+    @Value("${tools.trivy.timeout-seconds:400}")
     private int timeoutSeconds;
 
     @Value("${tools.trivy.binary:trivy}")
     private String binary;
 
-    @Value("${tools.temp:/Users/mitchelntuen/temp}")
+    @Value("${tools.temp:/tmp/vulnwatch}")
     private String tempLocation;
 
-    @Override
-    public SurfaceType surfaceType() {
-        return SurfaceType.DEPENDENCY;
-    }
-
-    @Override
-    public EngineResult scan(ScanJob job){
-        String repoId = job.repoId();
-        String outputFileName = "%s/trivy-%s.jsonl".formatted(tempLocation,job.scanId());
+    /**
+     * @param metadata resolved repository identity (fullName, branch)
+     * @param installationToken GitHub App installation token, or null for public repos
+     * @param scanId used for the output file name and logging
+     */
+    public List<TrivyEngineResult> scan(RepositoryMetadata metadata, String installationToken, String scanId) {
+        String outputFileName = "%s/trivy-%s.json".formatted(tempLocation, scanId);
         Path outFile = Path.of(outputFileName);
 
-        String repoUrl = repoId.startsWith("https")
-                ? repoId
-                : "https://github.com/" + repoId;
+        String repoUrl = "https://github.com/%s".formatted(metadata.fullName());
 
-        List<String> command = new ArrayList<>(List.of(
-                binary,
-                "repo", repoUrl,
-                "--format", "json",
-                "--output", outFile.toString(),
-                "--scanners", "vuln,secret",
-                "--severity", "MEDIUM,HIGH,CRITICAL",
-                "--quiet"
-        ));
+        TrivyCommandBuilder.TrivyCommandBuilderBuilder commandBuilder = TrivyCommandBuilder.create()
+                .binary(binary)
+                .repoUrl(repoUrl)
+                .branch(metadata.defaultBranch())
+                .outputFile(outputFileName);
+
+
+        if (installationToken != null && !installationToken.isBlank()) {
+            // GitHub accepts "x-access-token" as the basic auth username when using installation tokens
+            commandBuilder.credentials("x-access-token", installationToken);
+        }
+
+        List<String> command = commandBuilder.build();
+
+        log.info("Running Trivy [scanId={} command={}]", scanId, TrivyCommandBuilder.redactForLogging(command));
 
         try {
             cliExecutor.run(command, timeoutSeconds, false);
-            List<TrivyEngineResult> findings = trivyParser.parse(outFile.toFile());
-            return EngineResult.success(SurfaceType.DEPENDENCY, Map.of("findings", findings));
-        }catch (Exception e){
-            log.error("Error performing %s scan for scan_id:%s".formatted(job.scanType(), job.scanId()));
+            return trivyParser.parse(outFile.toFile());
+        } catch (Exception e) {
+            log.error("Trivy execution failed [scanId={} repo={}]: {}", scanId, metadata.fullName(), e.getMessage());
             throw new RuntimeException(e);
+        } finally {
+            cliExecutor.deleteSilently(outFile);
         }
     }
 }
