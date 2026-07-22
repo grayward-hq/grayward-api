@@ -8,3 +8,6 @@ branch_structure.json
 
 .vscode/
 public/fonts/
+
+# Claude Code local settings
+.claude/
