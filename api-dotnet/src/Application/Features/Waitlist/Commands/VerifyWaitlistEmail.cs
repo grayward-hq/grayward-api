@@ -40,21 +40,21 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
 
         if (entry is null)
         {
-            _logger.LogWarning("Email verification attempted for non-existent email: {email}", cmd.Email);
+            _logger.LogWarning("Email verification attempted for an email not on the waitlist.");
             return Result<WaitlistResponse>.Failure(
                 Error.NotFound("Email not found on waitlist"));
         }
 
         if (entry.EmailConfirmed)
         {
-            _logger.LogInformation("Email verification attempted for already confirmed email: {email}", cmd.Email);
+            _logger.LogInformation("Email verification attempted for already confirmed entry {waitlistEntryId}.", entry.Id);
             return Result<WaitlistResponse>.Failure(
                 Error.Conflict("Email already confirmed"));
         }
 
         if (!entry.ValidateEmailConfirmationToken(cmd.Token))
         {
-            _logger.LogWarning("Invalid or expired token for email: {email}", cmd.Email);
+            _logger.LogWarning("Invalid or expired verification token for entry {waitlistEntryId}.", entry.Id);
             return Result<WaitlistResponse>.Failure(
                 Error.Validation("Invalid or expired verification token"));
         }

@@ -89,7 +89,7 @@ public class ResendWaitlistConfirmationHandler
         var confirmationToken = entry.EmailConfirmationToken;
         if (string.IsNullOrEmpty(confirmationToken))
         {
-            confirmationToken = GenerateToken();
+            confirmationToken = WaitlistTokens.NewConfirmationToken();
             entry.GenerateEmailConfirmationToken(confirmationToken);
             _waitlistRepo.Update(entry);
             await _waitlistRepo.SaveChangesAsync(ct);
@@ -124,17 +124,6 @@ public class ResendWaitlistConfirmationHandler
         using var sha256 = SHA256.Create();
         var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(email));
         return Convert.ToHexString(hashBytes)[..8];
-    }
-
-    private static string GenerateToken()
-    {
-        const int tokenLength = 32;
-        var bytes = new byte[tokenLength];
-        using (var rng = RandomNumberGenerator.Create())
-        {
-            rng.GetBytes(bytes);
-        }
-        return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
     }
 
     private async Task SendConfirmationEmail(

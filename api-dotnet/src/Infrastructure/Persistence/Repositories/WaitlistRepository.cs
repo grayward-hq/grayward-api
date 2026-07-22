@@ -106,8 +106,9 @@ public class WaitlistRepository : IWaitlistRepository
     public async Task<long> GetLivePosition(long sequence, CancellationToken ct)
     {
         // Live queue rank = number of active (confirmed, still-waiting) entries whose confirmation
-        // sequence is at or before this one. Cancelled/promoted rows carry a null Position and are
-        // excluded, so their departure shifts everyone behind them up automatically on the next read.
+        // sequence is at or before this one. Promoted rows are excluded because their status is no
+        // longer EmailConfirmed, while cancelled rows have a null Position; either way their
+        // departure shifts everyone behind them up automatically on the next read.
         return await _context.Waitlists
             .CountAsync(w => w.Status == WaitlistStatus.EmailConfirmed
                           && w.Position != null
