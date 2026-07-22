@@ -460,6 +460,10 @@ public class VulnWatchDbContext : IdentityDbContext<User, IdentityRole<Guid>, Gu
             e.Property(w => w.ReferralCount)
                 .HasDefaultValue(0);
 
+            e.Property(w => w.JoinOrigin)
+                .HasMaxLength(255)
+                .IsRequired(false);
+
             e.Property(w => w.ReferralPosition)
                 .IsRequired();
 

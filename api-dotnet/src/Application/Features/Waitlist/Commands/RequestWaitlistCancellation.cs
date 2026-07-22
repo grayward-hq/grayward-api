@@ -3,6 +3,7 @@ using Application.Interfaces;
 using Domain.Common;
 using Domain.Enums;
 using MediatR;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +22,8 @@ public class RequestWaitlistCancellationHandler
     private readonly IWaitlistCancellationTokenService _tokenService;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
+    private readonly IRedisService _redis;
+    private readonly IHttpContextAccessor _http;
     private readonly ILogger<RequestWaitlistCancellationHandler> _logger;
 
     public RequestWaitlistCancellationHandler(
@@ -28,12 +31,16 @@ public class RequestWaitlistCancellationHandler
         IWaitlistCancellationTokenService tokenService,
         IEmailService emailService,
         IConfiguration config,
+        IRedisService redis,
+        IHttpContextAccessor http,
         ILogger<RequestWaitlistCancellationHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
         _tokenService = tokenService;
         _emailService = emailService;
         _config = config;
+        _redis = redis;
+        _http = http;
         _logger = logger;
     }
 
@@ -63,10 +70,21 @@ public class RequestWaitlistCancellationHandler
             return GenericSuccess();
         }
 
+        // Throttle per recipient: this endpoint mails an arbitrary address on request, so cap it to
+        // prevent inbox flooding. Skip silently (masked response unchanged) when a recent send holds
+        // the slot.
+        if (!await _redis.TryClaimEmailCooldownSlot(
+                WaitlistEmailThrottle.Purpose, normalizedEmail, WaitlistEmailThrottle.Cooldown(_config), ct))
+        {
+            _logger.LogInformation("Cancellation link request throttled for [{emailHash}]", emailHash);
+            return GenericSuccess();
+        }
+
         try
         {
             var token = _tokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = BuildCancellationLink(normalizedEmail, token);
+            var cancellationLink = WaitlistLinks.BuildCancellationLink(
+                _config, _http.HttpContext?.Request, normalizedEmail, token);
 
             await SendCancellationEmail(normalizedEmail, cancellationLink);
 
@@ -94,22 +112,6 @@ public class RequestWaitlistCancellationHandler
 
     private Result<MessageResponse> GenericSuccess() =>
         Result<MessageResponse>.Success(MessageResponse.Create(GenericResponseMessage));
-
-    private string BuildCancellationLink(string email, string token)
-    {
-        // Require the dedicated cancellation route — falling back to the site root would email
-        // a link to the wrong page. A missing setting is a configuration error, surfaced (and
-        // masked) by the caller's try/catch rather than silently producing a bad link.
-        string? baseUrl = _config["FrontendUrl:path"] ?? _config["FrontendUrl:Path"];
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            throw new InvalidOperationException(
-                "FrontendUrl:Path is not configured; cannot build the waitlist cancellation link.");
-
-        baseUrl = baseUrl.TrimEnd('/');
-        var waitlistCancellationUrl = _config["FrontendUrl:WaitlistCancel"] ?? $"{baseUrl}/waitlist/cancel";
-
-        return $"{waitlistCancellationUrl}?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
-    }
 
     private async Task SendCancellationEmail(string email, string cancellationLink)
     {

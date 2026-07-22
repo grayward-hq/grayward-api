@@ -4,6 +4,7 @@ using Domain.Common;
 using Domain.Entities;
 using Domain.Enums;
 using MediatR;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +29,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     private readonly IConfiguration _config;
     private readonly IWaitlistCancellationTokenService _cancellationTokenService;
     private readonly UserManager<User> _userManager;
+    private readonly IRedisService _redis;
+    private readonly IHttpContextAccessor _http;
     private readonly ILogger<JoinWaitlistHandler> _logger;
 
     public JoinWaitlistHandler(
@@ -36,6 +39,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         IConfiguration config,
         IWaitlistCancellationTokenService cancellationTokenService,
         UserManager<User> userManager,
+        IRedisService redis,
+        IHttpContextAccessor http,
         ILogger<JoinWaitlistHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
@@ -43,6 +48,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         _config = config;
         _cancellationTokenService = cancellationTokenService;
         _userManager = userManager;
+        _redis = redis;
+        _http = http;
         _logger = logger;
     }
 
@@ -67,6 +74,13 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         if (existingWaitlistEntry is not null && existingWaitlistEntry.Status != WaitlistStatus.Cancelled)
         {
             _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already exists.", cmd.Email);
+
+            // Let the real address owner know they're already on the list (and where they stand). The
+            // API response stays generic, so this reveals nothing to a form-submitting attacker — the
+            // mail only reaches the mailbox owner. Best-effort: a send failure must not change the
+            // masked response.
+            await SendAlreadyJoinedEmail(existingWaitlistEntry, ct);
+
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
 
@@ -75,6 +89,11 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         if (existingUser is not null)
         {
             _logger.LogInformation("Account enumeration masked: User {email} attempted to join waitlist but already registered.", cmd.Email);
+
+            // Same masking rationale as the already-on-waitlist branch: notify the real address owner
+            // (who already has an account) without revealing anything to a form-submitting attacker.
+            await SendAlreadyRegisteredEmail(normalizedEmail, ct);
+
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
 
@@ -107,6 +126,11 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         var confirmationToken = GenerateToken();
         entry.GenerateEmailConfirmationToken(confirmationToken);
 
+        // Capture the allowlisted frontend origin this join came from, so later links built without a
+        // request Origin header (e.g. the referral link at confirmation time) can route to the same
+        // environment. Only ever an allowlisted value; null when the origin is unknown/not allowed.
+        entry.SetJoinOrigin(WaitlistLinks.ResolveAllowedOrigin(_config, _http.HttpContext?.Request));
+
         try
         {
             if (isReactivation)
@@ -135,9 +159,10 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
         try
         {
-            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, normalizedEmail, confirmationToken);
+            var request = _http.HttpContext?.Request;
+            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, request, normalizedEmail, confirmationToken);
             var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, normalizedEmail, cancellationToken);
+            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, request, normalizedEmail, cancellationToken);
 
             await SendConfirmationEmail(normalizedEmail, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email sent successfully to {email}", cmd.Email);
@@ -190,6 +215,59 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     {
         var body = WaitlistConfirmationEmail.BuildBody(confirmLink, cancellationLink);
         await _emailService.SendAsync(email, WaitlistConfirmationEmail.Subject, body);
+    }
+
+    private async Task SendAlreadyJoinedEmail(WaitlistEntity entry, CancellationToken ct)
+    {
+        try
+        {
+            // Throttle: this notice is triggered by whoever submits the address, so cap it per
+            // recipient to prevent inbox flooding. Skip silently when a recent send holds the slot.
+            if (!await _redis.TryClaimEmailCooldownSlot(
+                    WaitlistEmailThrottle.Purpose, entry.Email, WaitlistEmailThrottle.Cooldown(_config), ct))
+            {
+                _logger.LogInformation("Already-on-waitlist notice throttled for existing entry {email}", entry.Email);
+                return;
+            }
+
+            // Position is only meaningful for a confirmed entry — the live rank among active
+            // entries (so cancellations shift everyone up). Pending/promoted entries have none.
+            long? livePosition = null;
+            if (entry.Status == WaitlistStatus.EmailConfirmed && entry.Position is long sequence)
+            {
+                livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
+            }
+
+            var body = WaitlistAlreadyJoinedEmail.BuildBody(entry.Status, livePosition);
+            await _emailService.SendAsync(entry.Email, WaitlistAlreadyJoinedEmail.Subject, body);
+            _logger.LogInformation("Already-on-waitlist notice sent to existing entry {email}", entry.Email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send already-on-waitlist notice to {email}.", entry.Email);
+        }
+    }
+
+    private async Task SendAlreadyRegisteredEmail(string email, CancellationToken ct)
+    {
+        try
+        {
+            // Same per-recipient throttle as the already-on-waitlist notice.
+            if (!await _redis.TryClaimEmailCooldownSlot(
+                    WaitlistEmailThrottle.Purpose, email, WaitlistEmailThrottle.Cooldown(_config), ct))
+            {
+                _logger.LogInformation("Already-registered notice throttled for {email}", email);
+                return;
+            }
+
+            var body = WaitlistAlreadyRegisteredEmail.BuildBody();
+            await _emailService.SendAsync(email, WaitlistAlreadyRegisteredEmail.Subject, body);
+            _logger.LogInformation("Already-registered notice sent to {email}", email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send already-registered notice to {email}.", email);
+        }
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)

@@ -1,6 +1,7 @@
 using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
 using Domain.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -19,6 +20,8 @@ public class RequestWaitlistCancellationHandlerTests
     private readonly Mock<IWaitlistCancellationTokenService> _mockTokenService;
     private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<IConfiguration> _mockConfig;
+    private readonly Mock<IRedisService> _mockRedis;
+    private readonly Mock<IHttpContextAccessor> _mockHttp;
     private readonly Mock<ILogger<RequestWaitlistCancellationHandler>> _mockLogger;
     private readonly RequestWaitlistCancellationHandler _handler;
 
@@ -28,6 +31,8 @@ public class RequestWaitlistCancellationHandlerTests
         _mockTokenService = new Mock<IWaitlistCancellationTokenService>();
         _mockEmailService = new Mock<IEmailService>();
         _mockConfig = new Mock<IConfiguration>();
+        _mockRedis = new Mock<IRedisService>();
+        _mockHttp = new Mock<IHttpContextAccessor>();
         _mockLogger = new Mock<ILogger<RequestWaitlistCancellationHandler>>();
 
         _mockConfig.Setup(c => c["FrontendUrl:WaitlistCancel"])
@@ -38,12 +43,19 @@ public class RequestWaitlistCancellationHandlerTests
         _mockEmailService
             .Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
+        // Default: cooldown slot is free, so the cancellation link is allowed to send.
+        _mockRedis
+            .Setup(r => r.TryClaimEmailCooldownSlot(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         _handler = new RequestWaitlistCancellationHandler(
             _mockWaitlistRepo.Object,
             _mockTokenService.Object,
             _mockEmailService.Object,
             _mockConfig.Object,
+            _mockRedis.Object,
+            _mockHttp.Object,
             _mockLogger.Object);
     }
 

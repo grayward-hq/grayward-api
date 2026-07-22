@@ -3,6 +3,7 @@ using Application.Interfaces;
 using Domain.Common;
 using Domain.Enums;
 using MediatR;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
@@ -28,6 +29,8 @@ public class ResendWaitlistConfirmationHandler
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
     private readonly IWaitlistCancellationTokenService _cancellationTokenService;
+    private readonly IRedisService _redis;
+    private readonly IHttpContextAccessor _http;
     private readonly ILogger<ResendWaitlistConfirmationHandler> _logger;
 
     public ResendWaitlistConfirmationHandler(
@@ -35,12 +38,16 @@ public class ResendWaitlistConfirmationHandler
         IEmailService emailService,
         IConfiguration config,
         IWaitlistCancellationTokenService cancellationTokenService,
+        IRedisService redis,
+        IHttpContextAccessor http,
         ILogger<ResendWaitlistConfirmationHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
         _emailService = emailService;
         _config = config;
         _cancellationTokenService = cancellationTokenService;
+        _redis = redis;
+        _http = http;
         _logger = logger;
     }
 
@@ -68,6 +75,15 @@ public class ResendWaitlistConfirmationHandler
             return GenericSuccess();
         }
 
+        // Throttle before any work: the resend button is the primary inbox-flooding vector, so cap
+        // it per recipient. Skip silently (masked response unchanged) when a recent send holds the slot.
+        if (!await _redis.TryClaimEmailCooldownSlot(
+                WaitlistEmailThrottle.Purpose, normalizedEmail, WaitlistEmailThrottle.Cooldown(_config), ct))
+        {
+            _logger.LogInformation("Confirmation resend throttled for [{emailHash}]", emailHash);
+            return GenericSuccess();
+        }
+
         // Reuse the original confirmation token so the resent link is identical to the first email.
         // A pending entry always has one from join; regenerate defensively only if it is missing.
         var confirmationToken = entry.EmailConfirmationToken;
@@ -81,9 +97,10 @@ public class ResendWaitlistConfirmationHandler
 
         try
         {
-            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, normalizedEmail, confirmationToken);
+            var request = _http.HttpContext?.Request;
+            var confirmLink = WaitlistLinks.BuildConfirmationLink(_config, request, normalizedEmail, confirmationToken);
             var cancellationToken = _cancellationTokenService.GenerateToken(entry.Id, normalizedEmail);
-            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, normalizedEmail, cancellationToken);
+            var cancellationLink = WaitlistLinks.BuildCancellationLink(_config, request, normalizedEmail, cancellationToken);
 
             await SendConfirmationEmail(normalizedEmail, confirmLink, cancellationLink);
             _logger.LogInformation("Confirmation email resent for [{emailHash}]", emailHash);

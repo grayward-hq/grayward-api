@@ -26,6 +26,11 @@ public class Waitlist : EntityBase
     public string? ReferralCode { get; private set; }
     public Guid? ReferredByWaitlistId { get; private set; }
     public int ReferralCount { get; private set; }
+    // The allowlisted frontend origin (scheme://host[:port]) the entry joined from, captured at join
+    // so environment-aware links (e.g. the referral link built at confirmation time, when the request
+    // may not carry an Origin header) can route back to the same frontend. Null when the join came
+    // from an unknown/non-allowlisted origin. Never holds an un-allowlisted value — see WaitlistLinks.
+    public string? JoinOrigin { get; private set; }
     // Referral ranking, independent of the join-order Position. Starts at a fixed base
     // (InitialReferralPosition) for every user and decreases by 1 per referral (floored at 1).
     // Lower = more referrals = higher reward priority.
@@ -139,6 +144,16 @@ public class Waitlist : EntityBase
     public void UpdateComments(string? comments)
     {
         Comments = comments;
+        Touch();
+    }
+
+    /// <summary>
+    /// Records the allowlisted frontend origin this entry joined from. The caller is responsible for
+    /// only passing an origin that has been validated against the allowlist (null clears it).
+    /// </summary>
+    public void SetJoinOrigin(string? origin)
+    {
+        JoinOrigin = origin;
         Touch();
     }
 

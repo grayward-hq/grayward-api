@@ -2,6 +2,7 @@ using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
 using MediatR;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
@@ -16,17 +17,20 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
     private readonly IWaitlistRepository _waitlistRepo;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
+    private readonly IHttpContextAccessor _http;
     private readonly ILogger<VerifyWaitlistEmailHandler> _logger;
 
     public VerifyWaitlistEmailHandler(
         IWaitlistRepository waitlistRepo,
         IEmailService emailService,
         IConfiguration config,
+        IHttpContextAccessor http,
         ILogger<VerifyWaitlistEmailHandler> logger)
     {
         _waitlistRepo = waitlistRepo;
         _emailService = emailService;
         _config = config;
+        _http = http;
         _logger = logger;
     }
 
@@ -82,7 +86,10 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         }
 
         var livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
-        var referralLink = WaitlistLinks.BuildReferralLink(_config, entry.ReferralCode!);
+        // Prefer the origin captured at join (this /verify request may be a header-less navigation),
+        // falling back to the live request origin and then the configured URL — all allowlist-gated.
+        var referralLink = WaitlistLinks.BuildReferralLink(
+            _config, _http.HttpContext?.Request, entry.ReferralCode!, entry.JoinOrigin);
 
         // Post-confirmation email with the claimed position and referral link. Best-effort:
         // a mail failure must not fail the confirmation (the data is also in the API response).

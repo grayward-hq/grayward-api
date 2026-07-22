@@ -2,6 +2,7 @@ using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -16,6 +17,7 @@ public class VerifyWaitlistEmailHandlerTests
     private readonly Mock<IWaitlistRepository> _mockWaitlistRepo;
     private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<IConfiguration> _mockConfig;
+    private readonly Mock<IHttpContextAccessor> _mockHttp;
     private readonly Mock<ILogger<VerifyWaitlistEmailHandler>> _mockLogger;
     private readonly VerifyWaitlistEmailHandler _handler;
 
@@ -24,12 +26,14 @@ public class VerifyWaitlistEmailHandlerTests
         _mockWaitlistRepo = new Mock<IWaitlistRepository>();
         _mockEmailService = new Mock<IEmailService>();
         _mockConfig = new Mock<IConfiguration>();
+        _mockHttp = new Mock<IHttpContextAccessor>();
         _mockLogger = new Mock<ILogger<VerifyWaitlistEmailHandler>>();
         _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
         _mockConfig.Setup(c => c["FrontendUrl:WaitlistJoin"]).Returns("http://localhost:3000/waitlist");
         _handler = new VerifyWaitlistEmailHandler(
-            _mockWaitlistRepo.Object, _mockEmailService.Object, _mockConfig.Object, _mockLogger.Object);
+            _mockWaitlistRepo.Object, _mockEmailService.Object, _mockConfig.Object,
+            _mockHttp.Object, _mockLogger.Object);
     }
 
     [Fact]
@@ -72,6 +76,49 @@ public class VerifyWaitlistEmailHandlerTests
         _mockEmailService.Verify(
             es => es.SendAsync(email, It.IsAny<string>(), It.Is<string>(b => b.Contains(entry.ReferralCode!))),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ReferralLink_UsesPersistedJoinOriginWhenRequestHasNoHeader()
+    {
+        // Arrange: config points at prod, but the entry joined from an allowlisted test origin.
+        // The verify request carries no Origin header (typical email-link navigation).
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["FrontendUrl:WaitlistJoin"] = "https://prod.example.com/waitlist",
+            ["FrontendUrl:AllowedOrigins:0"] = "https://test.example.com",
+        }).Build();
+
+        var email = "test@example.com";
+        var token = "valid-token-12345";
+        var entry = WaitlistEntity.Create(email, null);
+        entry.GenerateEmailConfirmationToken(token);
+        entry.SetJoinOrigin("https://test.example.com");
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockWaitlistRepo.Setup(r => r.GetNextPosition(It.IsAny<CancellationToken>())).ReturnsAsync(5L);
+        _mockWaitlistRepo.Setup(r => r.FindByReferralCode(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WaitlistEntity?)null);
+        _mockWaitlistRepo.Setup(r => r.GetLivePosition(5L, It.IsAny<CancellationToken>())).ReturnsAsync(3L);
+
+        string? capturedBody = null;
+        _mockEmailService.Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<string, string, string>((_, _, body) => capturedBody = body)
+            .Returns(Task.CompletedTask);
+
+        var handler = new VerifyWaitlistEmailHandler(
+            _mockWaitlistRepo.Object, _mockEmailService.Object, config, _mockHttp.Object, _mockLogger.Object);
+
+        // Act
+        var result = await handler.Handle(new VerifyWaitlistEmailCommand(email, token), CancellationToken.None);
+
+        // Assert: the referral link routes to the persisted test origin, not the configured prod host.
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(capturedBody);
+        Assert.Contains("https://test.example.com/waitlist?ref=", capturedBody);
+        Assert.DoesNotContain("prod.example.com", capturedBody);
+        Assert.StartsWith("https://test.example.com/waitlist?ref=", result.Value!.ReferralLink);
     }
 
     [Fact]
