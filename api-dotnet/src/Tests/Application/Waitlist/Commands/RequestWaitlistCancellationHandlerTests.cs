@@ -87,6 +87,36 @@ public class RequestWaitlistCancellationHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenThrottled_ReturnsGenericSuccessWithoutTokenOrEmail()
+    {
+        // Arrange: an eligible pending entry, but the per-recipient cooldown slot is already held.
+        var email = "test@example.com";
+        var entry = WaitlistEntity.Create(email, null);
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockRedis.Setup(r => r.TryClaimEmailCooldownSlot(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false); // throttled
+
+        // Act
+        var result = await _handler.Handle(
+            new RequestWaitlistCancellationCommand(email),
+            CancellationToken.None);
+
+        // Assert: same masked success, but no token generated and no email sent.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GenericMessage, result.Value!.Message);
+
+        _mockTokenService.Verify(
+            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
+            Times.Never);
+        _mockEmailService.Verify(
+            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_WithNonExistentEntry_ReturnsGenericSuccessAndDoesNotSendEmail()
     {
         // Arrange

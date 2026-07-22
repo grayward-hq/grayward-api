@@ -43,6 +43,14 @@ public class JoinWaitlistValidatorTests
         _sut.ShouldHaveValidationErrorFor(x => x.CompanyName, Request(company: "Acme" + (char)7 + "Corp"));
     }
 
+    [Theory]
+    [InlineData("<script>alert(1)</script>")]
+    [InlineData("I want <b>scans</b>")]
+    public void Validate_CommentsWithAngleBrackets_HasError(string comments)
+    {
+        _sut.ShouldHaveValidationErrorFor(x => x.Comments, Request(comments: comments));
+    }
+
     [Fact]
     public void Validate_CommentsWithControlChar_HasError()
     {

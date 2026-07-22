@@ -29,6 +29,8 @@ public class JoinWaitlistValidator : AbstractValidator<JoinWaitlistRequest>
         RuleFor(x => x.Comments)
             .MaximumLength(2000)
             .WithMessage("Comments must not exceed 2000 characters.")
+            .Must(HasNoAngleBrackets)
+            .WithMessage("Comments must not contain '<' or '>'.")
             .Must(HasNoControlCharacters)
             .WithMessage("Comments contain invalid control characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Comments));
