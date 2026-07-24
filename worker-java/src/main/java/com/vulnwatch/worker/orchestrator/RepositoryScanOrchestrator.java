@@ -69,9 +69,15 @@ public class RepositoryScanOrchestrator {
         List<AiResult> results = new ArrayList<>(findings.size());
         for (TrivyEngineResult finding : findings) {
             boolean isDependency = finding.packageName() != null;
-            results.add(isDependency
-                    ? aiEnricher.enrichVulnerability(finding)
-                    : aiEnricher.enrichSecret(finding));
+            AiResult result = null;
+            try {
+                result = isDependency
+                        ? aiEnricher.enrichVulnerability(finding)
+                        : aiEnricher.enrichSecret(finding);
+            } catch (Exception e) {
+                log.warn("AI enrichment failed for finding, continuing without it: {}", e.getMessage());
+            }
+            results.add(result);
         }
         return results;
     }
