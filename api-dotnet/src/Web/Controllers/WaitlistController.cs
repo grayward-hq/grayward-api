@@ -87,17 +87,40 @@ public class WaitlistController : ControllerBase
     [HttpGet("verify")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
-    public async Task<ActionResult<Result<MessageResponse>>> VerifyEmail(
+    public async Task<ActionResult<Result<WaitlistResponse>>> VerifyEmail(
         [FromQuery] string email,
         [FromQuery] string token,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token))
-            return Result<MessageResponse>.Failure(
+            return Result<WaitlistResponse>.Failure(
                 Error.Validation("Email and token are required")).ToHttpResponse(this);
 
         var result = await _mediator.Send(
             new VerifyWaitlistEmailCommand(email, token), ct);
+        return result.ToHttpResponse(this);
+    }
+
+    /// <summary>
+    /// Resend the waitlist confirmation email for a pending entry.
+    /// </summary>
+    /// <param name="request">Email to resend the confirmation link to.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Resend request accepted (generic response to prevent enumeration).</response>
+    /// <response code="400">Invalid email.</response>
+    [HttpPost("resend-confirmation")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitExtensions.GeneralPolicy)]
+    public async Task<ActionResult<Result<MessageResponse>>> ResendConfirmation(
+        [FromBody] ResendWaitlistConfirmationRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Email))
+            return Result<MessageResponse>.Failure(
+                Error.Validation("Email is required")).ToHttpResponse(this);
+
+        var result = await _mediator.Send(
+            new ResendWaitlistConfirmationCommand(request.Email), ct);
         return result.ToHttpResponse(this);
     }
 

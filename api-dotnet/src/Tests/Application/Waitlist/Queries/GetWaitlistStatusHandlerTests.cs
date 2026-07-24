@@ -23,10 +23,10 @@ public class GetWaitlistStatusHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithExistingEntry_ReturnsRealStatus()
+    public async Task Handle_WithUnconfirmedEntry_ReturnsPendingWithNoPosition()
     {
-        // Arrange
-        var entry = WaitlistEntity.Create("test@example.com", position: 42L);
+        // Arrange: an unconfirmed entry has not claimed a queue slot yet.
+        var entry = WaitlistEntity.Create("test@example.com");
         var query = new GetWaitlistStatusQuery("test@example.com");
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail("test@example.com", It.IsAny<CancellationToken>()))
@@ -41,23 +41,26 @@ public class GetWaitlistStatusHandlerTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
         Assert.Equal("test@example.com", result.Value!.Email);
-        Assert.Equal(42L, result.Value.Position);
+        Assert.Equal(0L, result.Value.Position);
         Assert.Equal(100, result.Value.TotalOnWaitlist);
         Assert.Equal(WaitlistStatus.Pending, result.Value.Status);
         Assert.False(result.Value.EmailConfirmed);
         Assert.Equal(entry.CreatedAt, result.Value.JoinedAt);
+        _mockWaitlistRepo.Verify(r => r.GetLivePosition(It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_WithConfirmedEntry_ReturnsConfirmedStatus()
+    public async Task Handle_WithConfirmedEntry_ReturnsLiveRankNotRawSequence()
     {
-        // Arrange
-        var entry = WaitlistEntity.Create("confirmed@example.com", position: 7L);
-        entry.ConfirmEmail();
+        // Arrange: confirmed at sequence 7, but live rank is 3 (earlier entries left the queue).
+        var entry = WaitlistEntity.Create("confirmed@example.com");
+        entry.ConfirmEmail(7L, "CODE7");
         var query = new GetWaitlistStatusQuery("confirmed@example.com");
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail("confirmed@example.com", It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
+        _mockWaitlistRepo.Setup(r => r.GetLivePosition(7L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3L);
         _mockWaitlistRepo.Setup(r => r.GetTotalCount(It.IsAny<CancellationToken>()))
             .ReturnsAsync(50);
 
@@ -67,7 +70,7 @@ public class GetWaitlistStatusHandlerTests
         // Assert
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.Equal(7L, result.Value!.Position);
+        Assert.Equal(3L, result.Value!.Position);
         Assert.True(result.Value.EmailConfirmed);
         Assert.Equal(WaitlistStatus.EmailConfirmed, result.Value.Status);
     }

@@ -99,8 +99,20 @@ public class WaitlistRepository : IWaitlistRepository
         }
 
         var maxPosition = await _context.Waitlists
-            .MaxAsync(w => (long?)w.Position, ct) ?? 0;
+            .MaxAsync(w => w.Position, ct) ?? 0;
         return maxPosition + 1;
+    }
+
+    public async Task<long> GetLivePosition(long sequence, CancellationToken ct)
+    {
+        // Live queue rank = number of active (confirmed, still-waiting) entries whose confirmation
+        // sequence is at or before this one. Promoted rows are excluded because their status is no
+        // longer EmailConfirmed, while cancelled rows have a null Position; either way their
+        // departure shifts everyone behind them up automatically on the next read.
+        return await _context.Waitlists
+            .CountAsync(w => w.Status == WaitlistStatus.EmailConfirmed
+                          && w.Position != null
+                          && w.Position <= sequence, ct);
     }
 
     public async Task<long> GetPositionByEmail(string email, CancellationToken ct)

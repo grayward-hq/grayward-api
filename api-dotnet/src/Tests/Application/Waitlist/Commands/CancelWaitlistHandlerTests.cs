@@ -32,7 +32,7 @@ public class CancelWaitlistHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         var cmd = new CancelWaitlistCommand(email, ValidToken);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -56,7 +56,7 @@ public class CancelWaitlistHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         var cmd = new CancelWaitlistCommand(email, "wrong-token");
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -82,7 +82,7 @@ public class CancelWaitlistHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         var cmd = new CancelWaitlistCommand(email, string.Empty);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -108,7 +108,7 @@ public class CancelWaitlistHandlerTests
         // normalized email, not just "any valid-looking token" — guards
         // against a token minted for one entry being replayed on another.
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         var cmd = new CancelWaitlistCommand(email, ValidToken);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -153,7 +153,7 @@ public class CancelWaitlistHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.MarkCancelled();
 
         var cmd = new CancelWaitlistCommand(email, ValidToken);
@@ -177,8 +177,8 @@ public class CancelWaitlistHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create(email, null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
         entry.MarkPromoted(Guid.NewGuid());
 
         var cmd = new CancelWaitlistCommand(email, ValidToken);
@@ -203,7 +203,7 @@ public class CancelWaitlistHandlerTests
         // Arrange
         var lowerEmail = "test@example.com";
         var mixedCaseEmail = "Test@Example.Com";
-        var entry = WaitlistEntity.Create(lowerEmail, null, 1L);
+        var entry = WaitlistEntity.Create(lowerEmail, null);
         var cmd = new CancelWaitlistCommand(mixedCaseEmail, ValidToken);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))

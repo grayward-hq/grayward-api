@@ -1,4 +1,5 @@
 using Application.Features.Profile.DTOs;
+using Application.Features.Waitlist;
 using Application.Interfaces;
 using Domain.Common;
 using Domain.Entities;
@@ -18,6 +19,7 @@ public class GetProfileHandler(
     INotificationPreferencesRepository notifPrefs,
     IWaitlistRepository waitlistRepo,
     ICurrentUser currentUser,
+    IHttpContextAccessor http,
     IConfiguration config)
     : IRequestHandler<GetProfileQuery, Result<UserProfileDto>>
 {
@@ -43,7 +45,22 @@ public class GetProfileHandler(
         if (waitlistEntry is not null)
         {
             referralCode = waitlistEntry.ReferralCode;
-            referralLink = BuildReferralLink(referralCode);
+
+            // Only build a link when a code actually exists — a promoted entry normally has one, but
+            // ReferralCode is nullable, so guard rather than assume. The referral link is incidental
+            // to the profile, so a missing FrontendUrl config must not fail the whole read.
+            if (referralCode is not null)
+            {
+                try
+                {
+                    referralLink = WaitlistLinks.BuildReferralLink(
+                        config, http.HttpContext?.Request, referralCode, waitlistEntry.JoinOrigin);
+                }
+                catch (InvalidOperationException)
+                {
+                    // FrontendUrl:WaitlistJoin not configured — leave the link null.
+                }
+            }
         }
 
         return Result<UserProfileDto>.Success(new UserProfileDto(
@@ -60,12 +77,5 @@ public class GetProfileHandler(
             ReferralCode:     referralCode,
             ReferralLink:     referralLink
         ));
-    }
-
-    private string BuildReferralLink(string referralCode)
-    {
-        var baseUrl = config["FrontendUrl:WaitlistJoin"] ?? config["FrontendUrl:Base"] ?? "http://localhost:3000";
-        baseUrl = baseUrl.TrimEnd('/');
-        return $"{baseUrl}?ref={Uri.EscapeDataString(referralCode)}";
     }
 }

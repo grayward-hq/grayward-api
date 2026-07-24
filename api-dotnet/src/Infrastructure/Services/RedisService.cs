@@ -87,5 +87,23 @@ public class RedisService : IRedisService
 
     private static string SlackStateKey(string state) => $"slack:oauth:state:{state}";
 
-    
+    public async Task<bool> TryClaimEmailCooldownSlot(
+        string purpose, string email, TimeSpan cooldown, CancellationToken ct)
+    {
+        var db = _redis.GetDatabase();
+        // SET key "1" EX <cooldown> NX — atomic claim: succeeds only if no slot is currently held.
+        return await db.StringSetAsync(
+            EmailCooldownKey(purpose, email),
+            "1",
+            cooldown,
+            When.NotExists);
+    }
+
+    private static string EmailCooldownKey(string purpose, string email)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        var hash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized)));
+        return $"emailcd:{purpose}:{hash}";
+    }
 }
