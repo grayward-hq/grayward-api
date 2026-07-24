@@ -2,8 +2,11 @@ package com.vulnwatch.worker.engine.repository.trivy;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builder pattern for constructing the Trivy CLI invocation.
@@ -55,40 +58,51 @@ public final class TrivyCommandBuilder {
             // Call Lombok's generated instance builder safely
             TrivyCommandBuilder context = this.buildArgs();
 
-            List<String> command = new ArrayList<>(List.of(
-                    context.binary,
-                    "repo", context.repoUrl,
-                    "--format", "json",
-                    "--output", context.outputFile,
-                    "--scanners", context.scanners,
-                    "--severity", context.severity,
-                    "--quiet"
-            ));
+            return getStrings(context);
+        }
 
-            if (context.branch != null && !context.branch.isBlank()) {
-                command.add("--branch");
-                command.add(context.branch);
+        /**
+         * Environment variables required to authenticate a private-repository
+         * scan. Trivy reads {@code GITHUB_TOKEN} for GitHub repo auth, so the
+         * token is passed via the child process environment instead of a
+         * plaintext CLI flag. Preserves the same nonblank credential checks
+         * that previously guarded the --username/--password flags.
+         */
+        public Map<String, String> buildEnv() {
+            if (this.username != null && !this.username.isBlank() &&
+                    this.password != null && !this.password.isBlank()) {
+                return Map.of("GITHUB_TOKEN", this.password);
             }
-
-            if (context.username != null && !context.username.isBlank() &&
-                    context.password != null && !context.password.isBlank()) {
-                command.add("--username");
-                command.add(context.username);
-                command.add("--password");
-                command.add(context.password);
-            }
-
-            return command;
+            return Map.of();
         }
     }
 
-    /** Same command with the credential values masked, safe to pass to a logger. */
-    public static String redactForLogging(List<String> command) {
-        List<String> copy = new ArrayList<>(command);
-        int pwIndex = copy.indexOf("--password");
-        if (pwIndex >= 0 && pwIndex + 1 < copy.size()) {
-            copy.set(pwIndex + 1, "***REDACTED***");
+    @NotNull
+    private static List<String> getStrings(TrivyCommandBuilder context) {
+        List<String> command = new ArrayList<>(List.of(
+                context.binary,
+                "repo", context.repoUrl,
+                "--format", "json",
+                "--output", context.outputFile,
+                "--scanners", context.scanners,
+                "--severity", context.severity,
+                "--quiet"
+        ));
+
+        if (context.branch != null && !context.branch.isBlank()) {
+            command.add("--branch");
+            command.add(context.branch);
         }
-        return String.join(" ", copy);
+        return command;
+    }
+
+    /**
+     * Command as a loggable string. Credentials are no longer passed as CLI
+     * arguments (they go through {@link TrivyCommandBuilderBuilder#buildEnv()}
+     * into the child process environment instead), so there is nothing left
+     * in the arg list to redact.
+     */
+    public static String redactForLogging(List<String> command) {
+        return String.join(" ", command);
     }
 }
