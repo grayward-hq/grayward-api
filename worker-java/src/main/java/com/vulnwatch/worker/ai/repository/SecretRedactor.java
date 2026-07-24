@@ -21,14 +21,12 @@ public final class SecretRedactor {
         return """
                 A potential hardcoded secret was detected.
                 Category: %s
-                File: %s
                 Lines: %d-%d
                 Severity: %s
                 Do not attempt to guess or reconstruct the secret value — \
                 only explain the risk and remediation steps for this category of exposure.
                 """.formatted(
                 nullToUnknown(finding.category()),
-                nullToUnknown(finding.secretLocation()),
                 finding.startLine() != null ? finding.startLine() : 0,
                 finding.endLine() != null ? finding.endLine() : 0,
                 nullToUnknown(finding.severity())
