@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs Trivy against a repository. No longer implements the domain
@@ -58,11 +59,12 @@ public class TrivyEngine {
         }
 
         List<String> command = commandBuilder.build();
+        Map<String, String> env = commandBuilder.buildEnv();
 
         log.info("Running Trivy [scanId={} command={}]", scanId, TrivyCommandBuilder.redactForLogging(command));
 
         try {
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, env, timeoutSeconds, false);
             return trivyParser.parse(outFile.toFile());
         } catch (Exception e) {
             log.error("Trivy execution failed [scanId={} repo={}]: {}", scanId, metadata.fullName(), e.getMessage());
