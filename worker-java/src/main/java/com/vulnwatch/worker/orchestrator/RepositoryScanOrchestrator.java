@@ -38,9 +38,9 @@ public class RepositoryScanOrchestrator {
 
     public void scan(ScanJob job) {
         String scanId = job.scanId();
-        persistence.markRunning(scanId);
 
         try {
+            persistence.markRunning(scanId);
             RepositoryMetadata metadata = metadataRepository.findById(job.repoId())
                     .orElseThrow(() -> new IllegalStateException(
                             "No MonitoredRepository found for id=%s".formatted(job.repoId())));
