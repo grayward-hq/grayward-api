@@ -45,8 +45,8 @@ public class PromoteWaitlistHandlerTests
     public async Task Handle_WithConfirmedWaitlist_ConfirmsUserEmailAndSendsPasswordSetupInvite()
     {
         // Arrange
-        var entry = WaitlistEntity.Create("test@example.com", null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create("test@example.com", null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
         UserEntity? createdUser = null;
 
         _mockWaitlistRepo.Setup(r => r.GetById(entry.Id, It.IsAny<CancellationToken>()))
@@ -94,8 +94,8 @@ public class PromoteWaitlistHandlerTests
     public async Task Handle_WithSendInvitationEmailFalse_ConfirmsUserEmailWithoutSendingPasswordSetupInvite()
     {
         // Arrange
-        var entry = WaitlistEntity.Create("test@example.com", null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create("test@example.com", null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
         UserEntity? createdUser = null;
 
         _mockWaitlistRepo.Setup(r => r.GetById(entry.Id, It.IsAny<CancellationToken>()))
@@ -136,8 +136,8 @@ public class PromoteWaitlistHandlerTests
     public async Task Handle_WhenEmailConfirmationFails_RollsBackUserAndDoesNotPromote()
     {
         // Arrange
-        var entry = WaitlistEntity.Create("test@example.com", null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create("test@example.com", null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
         UserEntity? createdUser = null;
 
         _mockWaitlistRepo.Setup(r => r.GetById(entry.Id, It.IsAny<CancellationToken>()))
@@ -175,8 +175,8 @@ public class PromoteWaitlistHandlerTests
     public async Task Handle_WhenInvitationEmailFails_RollsBackUserAndDoesNotPromote()
     {
         // Arrange
-        var entry = WaitlistEntity.Create("test@example.com", null, 1L);
-        entry.ConfirmEmail();
+        var entry = WaitlistEntity.Create("test@example.com", null);
+        entry.ConfirmEmail(1, "PROMOCODE1");
         UserEntity? createdUser = null;
 
         _mockWaitlistRepo.Setup(r => r.GetById(entry.Id, It.IsAny<CancellationToken>()))

@@ -19,11 +19,24 @@
     <properties>
         <java.version>21</java.version>
         <netty.version>4.2.15.Final</netty.version>
-        <postgresql.version>42.7.11</postgresql.version>
+        <postgresql.version>42.7.13</postgresql.version>
+        <jackson-bom.version>2.22.1</jackson-bom.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Imported first so its jackson-core / jackson-annotations / jackson-databind
+                 entries take precedence over the versions pulled in by spring-boot-dependencies
+                 below (Maven resolves BOM conflicts on a first-declared-wins basis). This keeps
+                 all three Jackson core modules in lockstep at 2.22.1, matching the existing
+                 jackson-databind pin used by the direct dependency further down in this file. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>io.modelcontextprotocol.sdk</groupId>
                 <artifactId>mcp-core</artifactId>
@@ -83,7 +96,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.21.4</version>
+             <version>2.22.1</version>
         </dependency>
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
@@ -175,6 +188,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.vaadin.external.google</groupId>
+                    <artifactId>android-json</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>

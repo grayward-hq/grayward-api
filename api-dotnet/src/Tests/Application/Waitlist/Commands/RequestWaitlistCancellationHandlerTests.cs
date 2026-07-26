@@ -1,6 +1,7 @@
 using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
 using Domain.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -19,6 +20,8 @@ public class RequestWaitlistCancellationHandlerTests
     private readonly Mock<IWaitlistCancellationTokenService> _mockTokenService;
     private readonly Mock<IEmailService> _mockEmailService;
     private readonly Mock<IConfiguration> _mockConfig;
+    private readonly Mock<IRedisService> _mockRedis;
+    private readonly Mock<IHttpContextAccessor> _mockHttp;
     private readonly Mock<ILogger<RequestWaitlistCancellationHandler>> _mockLogger;
     private readonly RequestWaitlistCancellationHandler _handler;
 
@@ -28,6 +31,8 @@ public class RequestWaitlistCancellationHandlerTests
         _mockTokenService = new Mock<IWaitlistCancellationTokenService>();
         _mockEmailService = new Mock<IEmailService>();
         _mockConfig = new Mock<IConfiguration>();
+        _mockRedis = new Mock<IRedisService>();
+        _mockHttp = new Mock<IHttpContextAccessor>();
         _mockLogger = new Mock<ILogger<RequestWaitlistCancellationHandler>>();
 
         _mockConfig.Setup(c => c["FrontendUrl:WaitlistCancel"])
@@ -38,12 +43,19 @@ public class RequestWaitlistCancellationHandlerTests
         _mockEmailService
             .Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(Task.CompletedTask);
+        // Default: cooldown slot is free, so the cancellation link is allowed to send.
+        _mockRedis
+            .Setup(r => r.TryClaimEmailCooldownSlot(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         _handler = new RequestWaitlistCancellationHandler(
             _mockWaitlistRepo.Object,
             _mockTokenService.Object,
             _mockEmailService.Object,
             _mockConfig.Object,
+            _mockRedis.Object,
+            _mockHttp.Object,
             _mockLogger.Object);
     }
 
@@ -52,7 +64,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
@@ -72,6 +84,36 @@ public class RequestWaitlistCancellationHandlerTests
             "Cancel your Vulnwatch waitlist spot",
             It.Is<string>(body => body.Contains("https://app.example.com/waitlist/cancel?email=test%40example.com&token=cancel%20token"))),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenThrottled_ReturnsGenericSuccessWithoutTokenOrEmail()
+    {
+        // Arrange: an eligible pending entry, but the per-recipient cooldown slot is already held.
+        var email = "test@example.com";
+        var entry = WaitlistEntity.Create(email, null);
+
+        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entry);
+        _mockRedis.Setup(r => r.TryClaimEmailCooldownSlot(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false); // throttled
+
+        // Act
+        var result = await _handler.Handle(
+            new RequestWaitlistCancellationCommand(email),
+            CancellationToken.None);
+
+        // Assert: same masked success, but no token generated and no email sent.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GenericMessage, result.Value!.Message);
+
+        _mockTokenService.Verify(
+            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
+            Times.Never);
+        _mockEmailService.Verify(
+            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
     }
 
     [Fact]
@@ -105,7 +147,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.MarkCancelled();
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
@@ -133,7 +175,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
         entry.MarkPromoted(Guid.NewGuid());
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
@@ -161,7 +203,7 @@ public class RequestWaitlistCancellationHandlerTests
     {
         // Arrange
         var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null, 1L);
+        var entry = WaitlistEntity.Create(email, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);
@@ -185,7 +227,7 @@ public class RequestWaitlistCancellationHandlerTests
         // Arrange
         var lowerEmail = "test@example.com";
         var mixedCaseEmail = " Test@Example.Com ";
-        var entry = WaitlistEntity.Create(lowerEmail, null, 1L);
+        var entry = WaitlistEntity.Create(lowerEmail, null);
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(lowerEmail, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entry);

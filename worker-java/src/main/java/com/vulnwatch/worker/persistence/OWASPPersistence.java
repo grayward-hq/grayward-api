@@ -46,7 +46,7 @@ public class OWASPPersistence {
 
     private static final String UPDATE_SCAN_OWASP = """
             UPDATE "Scans"
-            SET "OWASPScore" = ?, "OWASPTier" = ?, "UpdatedAt" = NOW()
+            SET "OWASPScore" = ?, "OWASPTier" = ?, "SecurityScore" = ?, "UpdatedAt" = NOW()
             WHERE "Id" = ?
             """;
 
@@ -103,6 +103,7 @@ public class OWASPPersistence {
                 UPDATE_SCAN_OWASP,
                 overallScore,
                 tier.getLabel(),
+                overallScore,
                 UUID.fromString(scanId)
         );
 

@@ -34,12 +34,20 @@ public class GetWaitlistStatusHandler : IRequestHandler<GetWaitlistStatusQuery, 
                 Error.NotFound("Email not found on the waitlist"));
         }
 
+        // Position is only meaningful once confirmed; it is the live rank among active entries
+        // (so cancellations shift everyone up). Unconfirmed/cancelled entries report 0.
+        long livePosition = 0;
+        if (entry.Status == WaitlistStatus.EmailConfirmed && entry.Position is long sequence)
+        {
+            livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
+        }
+
         var totalCount = await _waitlistRepo.GetTotalCount(ct);
 
         return Result<WaitlistStatusResponse>.Success(
             new WaitlistStatusResponse(
                 entry.Email,
-                entry.Position,
+                livePosition,
                 totalCount,
                 entry.Status,
                 entry.EmailConfirmed,
