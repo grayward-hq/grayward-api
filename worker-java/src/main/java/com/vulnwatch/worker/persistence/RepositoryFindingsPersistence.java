@@ -2,6 +2,7 @@ package com.vulnwatch.worker.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.engine.repository.trivy.models.TrivyEngineResult;
+import com.vulnwatch.worker.enums.FindingSeverity;
 import com.vulnwatch.worker.enums.SurfaceType;
 import com.vulnwatch.worker.model.AiResult;
 import lombok.extern.slf4j.Slf4j;
@@ -20,11 +21,22 @@ import java.util.regex.Pattern;
 
 /**
  * Persists repository scan findings into the SAME "Findings"/"Scans" tables
- * the domain pipeline already uses
+ * the domain pipeline already uses.
  *
  * This also removes the need for a separate .NET-side Redis consumer:
  * the worker marks the Scan row Completed/Failed directly, exactly like
  * DomainPersistence does for domain scans.
+ *
+ * CLEAN-SCAN FALLBACK:
+ * When Trivy legitimately returns zero findings (no vulnerable dependencies,
+ * no exposed secrets), we no longer leave the scan with zero Finding rows.
+ * A scan with zero rows is ambiguous from the API's point of view — it looks
+ * identical to a scan that silently failed to produce anything. Instead we
+ * insert a single synthetic, informational Finding using
+ * {@link FindingSeverity#NONE} (deduction = 0, so it never reduces the
+ * security score) that explicitly records "scanned, nothing found." This
+ * gives the API/UI a concrete row to key a "clean" badge and a full score off
+ * of, instead of inferring "clean" from the absence of data.
  */
 @Slf4j
 @Repository
@@ -50,6 +62,10 @@ public class RepositoryFindingsPersistence {
             UPDATE "Scans" SET "Status" = 'Failed', "CompletedAt" = ?, "UpdatedAt" = ? WHERE "Id" = ?
             """;
 
+    /** Marker title used for the synthetic clean-scan row. Match on this if you ever need to
+     *  distinguish it from a real finding downstream (e.g. hide it from a findings list view). */
+    public static final String CLEAN_SCAN_TITLE = "No vulnerabilities or secrets detected";
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -68,6 +84,13 @@ public class RepositoryFindingsPersistence {
     @Transactional
     public void saveFindings(String scanId, List<TrivyEngineResult> findings, List<AiResult> aiResults) {
         try {
+            if (findings.isEmpty()) {
+                insertCleanScanMarker(scanId);
+                markComplete(scanId);
+                log.info("Repository scan produced no findings — inserted clean-scan marker [scanId={}]", scanId);
+                return;
+            }
+
             for (int i = 0; i < findings.size(); i++) {
                 TrivyEngineResult finding = findings.get(i);
                 AiResult ai = i < aiResults.size() ? aiResults.get(i) : null;
@@ -87,6 +110,32 @@ public class RepositoryFindingsPersistence {
         if (updated == 0) {
             log.warn("markFailed: no Scan row found [scanId={}]", scanId);
         }
+    }
+
+    /**
+     * Inserts one informational Finding row representing a clean result.
+     * Severity is {@link FindingSeverity#NONE}, which carries a 0-point
+     * deduction, so it cannot lower the computed security score — it exists
+     * purely so downstream consumers have a concrete "we scanned this and
+     * found nothing" record instead of an empty result set.
+     */
+    private void insertCleanScanMarker(String scanId) throws Exception {
+        String payload = mapper.writeValueAsString(Map.of(
+                "scanners", "vuln,secret",
+                "result", "clean"
+        ));
+
+        jdbc.update(INSERT_FINDING,
+                UUID.randomUUID(),
+                uuid(scanId),
+                SurfaceType.DEPENDENCY.getLabel(),
+                FindingSeverity.NONE.getName(),
+                CLEAN_SCAN_TITLE,
+                null,
+                "Repository scan completed successfully across dependency and secret scanners with no issues detected.",
+                payload,
+                "No action required.",
+                Timestamp.from(Instant.now()));
     }
 
     private void insertFinding(String scanId, TrivyEngineResult finding, AiResult ai) throws Exception {
