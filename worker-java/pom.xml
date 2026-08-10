@@ -25,6 +25,7 @@
         <netty.version>4.2.15.Final</netty.version>
         <postgresql.version>42.7.13</postgresql.version>
         <jackson-bom.version>2.22.1</jackson-bom.version>
+        <micrometer.version>1.15.12</micrometer.version>
     </properties>
 
     <dependencyManagement>
@@ -74,6 +75,18 @@
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
                 <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Pin Micrometer to patch CVE-2026-40983 & CVE-2026-40984 (DoS via crafted gRPC/HTTP
+                 requests). Declared before spring-boot-dependencies for the same first-declared-wins
+                 reason as the Jackson BOM above: the ${micrometer.version} property alone would not
+                 do it, because an imported BOM resolves its own properties at import time and is
+                 unaffected by an override in this POM. -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-bom</artifactId>
+                <version>${micrometer.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

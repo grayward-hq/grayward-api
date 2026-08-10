@@ -1,6 +1,7 @@
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
+using Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -109,7 +110,10 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         // a mail failure must not fail the confirmation (the data is also in the API response).
         try
         {
-            await SendConfirmedEmail(entry.Email, livePosition, referralLink);
+            // Denominator for the position card. Counts confirmed entries specifically — the same
+            // population GetLivePosition ranks within — so the two numbers agree.
+            var totalConfirmed = await _waitlistRepo.CountByStatus(WaitlistStatus.EmailConfirmed, ct);
+            await SendConfirmedEmail(entry.Email, livePosition, totalConfirmed, referralLink);
         }
         catch (Exception ex)
         {
@@ -130,41 +134,12 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
                 ReferralLink: referralLink));
     }
 
-    private async Task SendConfirmedEmail(string email, long position, string referralLink)
+    private async Task SendConfirmedEmail(
+        string email, long position, int totalConfirmed, string referralLink)
     {
-        var body = BuildConfirmedEmailBody(position, referralLink);
-        await _emailService.SendAsync(email, "You're on the Vulnwatch waitlist! 🎯", body);
-    }
-
-    private static string BuildConfirmedEmailBody(long position, string referralLink)
-    {
-        return $@"
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <title>You're on the waitlist</title>
-    </head>
-    <body style='font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;'>
-        <div style='max-width: 600px; margin: auto; background: #ffffff; padding: 30px; border-radius: 8px;'>
-            <h2 style='color: #333;'>You're in! 🎉</h2>
-
-            <p style='font-size: 16px; color: #555;'>
-                Your email is confirmed and your spot is secured. You're currently
-                <strong>#{position}</strong> on the Vulnwatch waitlist.
-            </p>
-
-            <p style='font-size: 14px; color: #555; margin-top: 24px;'>
-                Want to move up the queue? Share your referral link — every person who joins with it
-                moves you closer to the front:
-            </p>
-
-            <p style='font-size: 14px; color: #999;'>
-                <code style='background-color: #f0f0f0; padding: 5px; display: inline-block;'>{referralLink}</code>
-            </p>
-        </div>
-    </body>
-    </html>";
+        var body = WaitlistConfirmedEmail.BuildBody(
+            WaitlistEmailBranding.From(_config), position, totalConfirmed, referralLink);
+        await _emailService.SendAsync(email, WaitlistConfirmedEmail.Subject, body);
     }
 
     private async Task<string> GenerateUniqueReferralCode(CancellationToken ct)
