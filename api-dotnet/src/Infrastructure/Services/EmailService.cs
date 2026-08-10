@@ -34,7 +34,11 @@ public class EmailService : IEmailService
         using var client = new SmtpClient(credentials.Host, credentials.Port)
         {
             Credentials = new NetworkCredential(credentials.Username, credentials.Password),
-            EnableSsl = true
+            // STARTTLS, not implicit TLS — SmtpClient cannot do the latter, so this must be an
+            // explicit-TLS port (587/2525/25). Pointing it at 465 hangs until the timeout below.
+            EnableSsl = true,
+            // The 100s default ties up the request thread when a connection stalls.
+            Timeout = 30_000
         };
 
         try
@@ -56,12 +60,21 @@ public class EmailService : IEmailService
         }
         catch (SmtpException ex)
         {
-            _logger.LogError(ex, "SMTP failure while sending email to {Recipient}. Status: {StatusCode}.", to, ex.StatusCode);
+            // Host, port and sender are logged because SmtpException collapses most server-side
+            // rejections into GeneralFailure: without them there is no way to tell a wrong port from
+            // bad credentials from an unverified sending domain. The password is never logged.
+            _logger.LogError(
+                ex,
+                "SMTP failure while sending email to {Recipient} via {Host}:{Port} as {Sender}. Status: {StatusCode}.",
+                to, credentials.Host, credentials.Port, credentials.Username, ex.StatusCode);
             return;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error while sending email to {Recipient}.", to);
+            _logger.LogError(
+                ex,
+                "Unexpected error while sending email to {Recipient} via {Host}:{Port}.",
+                to, credentials.Host, credentials.Port);
             return;
         }
     }
