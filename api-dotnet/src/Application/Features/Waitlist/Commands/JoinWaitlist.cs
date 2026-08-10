@@ -201,7 +201,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         string confirmLink,
         string cancellationLink)
     {
-        var body = WaitlistConfirmationEmail.BuildBody(confirmLink, cancellationLink);
+        var body = WaitlistConfirmationEmail.BuildBody(
+            WaitlistEmailBranding.From(_config), confirmLink, cancellationLink);
         await _emailService.SendAsync(email, WaitlistConfirmationEmail.Subject, body);
     }
 

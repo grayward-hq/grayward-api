@@ -17,18 +17,23 @@ internal static class WaitlistAlreadyRegisteredEmail
 
     public static string BuildBody(WaitlistEmailBranding branding) => WaitlistEmailLayout.Render(
         branding,
-        title: "You already have an account",
-        preheader: "This email is already registered with Vulnwatch — just sign in.",
+        title: "You're already protected",
+        preheader: "This email is already linked to an active Vulnwatch account — just sign in.",
         headingLead: "You&rsquo;re already",
-        headingAccent: "set up!",
+        headingAccent: "protected!",
         bodyHtml:
             WaitlistEmailLayout.Paragraph(
-                "Someone just tried to join the Vulnwatch waitlist with this email, but it&rsquo;s " +
-                "already registered as a full Vulnwatch account.") +
+                "This email is already linked to an active Vulnwatch account.") +
             WaitlistEmailLayout.Paragraph(
-                "There&rsquo;s no waitlist to join &mdash; you&rsquo;re already in.") +
+                "You can continue monitoring your attack surface from your existing dashboard.") +
             WaitlistEmailLayout.Paragraph(
-                "Just sign in with this email to pick up where you left off.", last: true),
+                "Simply sign in to access your latest scans, alerts and security insights.", last: true),
+        // Falls back to the home page when no dashboard URL is configured, so the recipient always
+        // has somewhere to go.
+        buttonLabel: branding.DashboardUrl is null ? "Back to Home" : "Go to Dashboard",
+        buttonUrl: branding.DashboardUrl ?? branding.HomeUrl,
+        belowButton: WaitlistEmailLayout.LinkLine(
+            "Forgotten your password?", "Reset it here.", branding.PasswordResetUrl),
         footnote:
             "If this wasn&rsquo;t you, you can safely ignore this email &mdash; " +
             "nothing has changed on your account.");

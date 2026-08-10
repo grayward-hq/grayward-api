@@ -25,6 +25,8 @@ namespace Application.Features.Waitlist;
 internal sealed record WaitlistEmailBranding(
     string? AssetsBase,
     string? HomeUrl,
+    string? DashboardUrl,
+    string? PasswordResetUrl,
     string? XUrl,
     string? FacebookUrl,
     string? LinkedInUrl)
@@ -32,6 +34,8 @@ internal sealed record WaitlistEmailBranding(
     public static WaitlistEmailBranding From(IConfiguration config) => new(
         AssetsBase: ReadUrl(config, "FrontendUrl:AssetsBase")?.TrimEnd('/'),
         HomeUrl: ReadUrl(config, "FrontendUrl:Home"),
+        DashboardUrl: ReadUrl(config, "FrontendUrl:Dashboard"),
+        PasswordResetUrl: ReadUrl(config, "FrontendUrl:PasswordReset"),
         XUrl: ReadUrl(config, "Social:X"),
         FacebookUrl: ReadUrl(config, "Social:Facebook"),
         LinkedInUrl: ReadUrl(config, "Social:LinkedIn"));

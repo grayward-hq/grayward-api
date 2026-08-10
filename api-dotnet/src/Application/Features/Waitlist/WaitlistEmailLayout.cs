@@ -44,6 +44,11 @@ internal static class WaitlistEmailLayout
     /// <param name="bodyHtml">Body paragraphs, built with <see cref="Paragraph"/>.</param>
     /// <param name="footnote">Small print closing the message.</param>
     /// <param name="positionCard">Optional queue-position card from <see cref="PositionCard"/>.</param>
+    /// <param name="mascot">Mascot asset filename; each mail uses the pose that matches its message.</param>
+    /// <param name="buttonLabel">Call-to-action label. The button needs both a label and a URL to render.</param>
+    /// <param name="buttonUrl">Call-to-action target.</param>
+    /// <param name="belowButton">Optional line directly under the button, e.g. a password-reset link.</param>
+    /// <param name="infoCard">Optional green callout from <see cref="InfoCard"/>.</param>
     public static string Render(
         WaitlistEmailBranding branding,
         string title,
@@ -52,7 +57,12 @@ internal static class WaitlistEmailLayout
         string headingAccent,
         string bodyHtml,
         string footnote,
-        string? positionCard = null)
+        string? positionCard = null,
+        string mascot = "vulnwatch-mascot.png",
+        string? buttonLabel = null,
+        string? buttonUrl = null,
+        string? belowButton = null,
+        string? infoCard = null)
     {
         return $@"
 <!DOCTYPE html>
@@ -76,7 +86,7 @@ internal static class WaitlistEmailLayout
                         <td style='padding: 40px 32px;'>
 
                             {BuildLogo(branding)}
-                            {BuildMascot(branding)}
+                            {BuildMascot(branding, mascot)}
 
                             <p style='margin: 0 0 24px 0; font-family: {FontStack}; font-size: 24px;
                                       font-weight: 700; color: {HeadingText}; text-align: center; line-height: 1.3;'>
@@ -85,7 +95,9 @@ internal static class WaitlistEmailLayout
 
                             {positionCard}
                             {bodyHtml}
-                            {BuildHomeButton(branding)}
+                            {BuildButton(buttonLabel, buttonUrl)}
+                            {belowButton}
+                            {infoCard}
 
                             <p style='margin: 0 0 24px 0; font-family: {FontStack}; font-size: 13px;
                                       color: {MutedText}; text-align: center; line-height: 1.6;'>
@@ -181,9 +193,9 @@ internal static class WaitlistEmailLayout
     }
 
     /// <summary>Decorative mascot; omitted entirely when no assets are hosted.</summary>
-    private static string BuildMascot(WaitlistEmailBranding branding)
+    private static string BuildMascot(WaitlistEmailBranding branding, string fileName)
     {
-        var mascot = branding.Asset("vulnwatch-mascot.png");
+        var mascot = branding.Asset(fileName);
         if (mascot is null)
             return string.Empty;
 
@@ -200,22 +212,98 @@ internal static class WaitlistEmailLayout
                             </table>";
     }
 
-    /// <summary>"Back to Home" call to action; omitted when no home URL is configured.</summary>
-    private static string BuildHomeButton(WaitlistEmailBranding branding)
+    /// <summary>
+    /// Primary call to action. Needs both a label and a URL — an unconfigured target drops the button
+    /// entirely rather than rendering one that goes nowhere.
+    /// </summary>
+    private static string BuildButton(string? label, string? url)
     {
-        if (branding.HomeUrl is null)
+        if (label is null || url is null)
             return string.Empty;
 
         return $@"
                             <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
                                 <tr>
                                     <td align='center' style='padding-bottom: 32px;'>
-                                        <a href='{Encode(branding.HomeUrl)}'
+                                        <a href='{Encode(url)}'
                                            style='display: inline-block; background-color: {BrandDark}; color: #FFFFFF;
                                                   font-family: {FontStack}; font-size: 15px; font-weight: 700;
                                                   text-decoration: none; padding: 14px 32px; border-radius: 8px;'>
-                                            Back to Home
+                                            {label}
                                         </a>
+                                    </td>
+                                </tr>
+                            </table>";
+    }
+
+    /// <summary>
+    /// A line under the button pairing plain text with a green link, e.g. "Forgotten your password?
+    /// Reset it here." Returns empty when the target is unconfigured, so the dangling question never
+    /// appears without its answer.
+    /// </summary>
+    public static string LinkLine(string text, string linkText, string? url)
+    {
+        if (url is null)
+            return string.Empty;
+
+        return $@"
+                            <p style='margin: 0 0 32px 0; font-family: {FontStack}; font-size: 15px;
+                                      color: {HeadingText}; text-align: center; line-height: 1.6;'>
+                                {text}
+                                <a href='{Encode(url)}' style='color: {BrandGreen}; font-weight: 700;
+                                                               text-decoration: none;'>{linkText}</a>
+                            </p>";
+    }
+
+    /// <summary>
+    /// The green "Why verify?" callout. Dark text on the brand fill, which is the one place
+    /// <see cref="BrandGreenFill"/> is safe for a text background — it reaches ~9:1 against
+    /// <see cref="BrandDark"/>.
+    /// </summary>
+    public static string InfoCard(WaitlistEmailBranding branding, string heading, string body)
+    {
+        var icon = branding.Asset("icon-lock.png");
+
+        var iconCell = icon is null
+            ? string.Empty
+            : $@"
+                                                <td valign='top' width='56' style='padding-right: 12px;'>
+                                                    <table role='presentation' cellpadding='0' cellspacing='0' border='0'
+                                                           style='background-color: #FFFFFF; border-radius: 22px;'>
+                                                        <tr>
+                                                            <td align='center' style='padding: 10px;'>
+                                                                <img src='{Encode(icon)}' alt='' width='24' height='24'
+                                                                     style='display: block; border: 0; width: 24px; height: 24px;'>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </td>";
+
+        return $@"
+                            <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
+                                <tr>
+                                    <td style='padding-bottom: 32px;'>
+                                        <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'
+                                               style='background-color: {BrandGreenFill}; border-radius: 12px;'>
+                                            <tr>
+                                                <td style='padding: 20px;'>
+                                                    <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
+                                                        <tr>{iconCell}
+                                                            <td valign='top'>
+                                                                <p style='margin: 0 0 6px 0; font-family: {FontStack};
+                                                                          font-size: 15px; font-weight: 700; color: {BrandDark};'>
+                                                                    {heading}
+                                                                </p>
+                                                                <p style='margin: 0; font-family: {FontStack}; font-size: 13px;
+                                                                          color: {BrandDark}; line-height: 1.6;'>
+                                                                    {body}
+                                                                </p>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </table>
                                     </td>
                                 </tr>
                             </table>";

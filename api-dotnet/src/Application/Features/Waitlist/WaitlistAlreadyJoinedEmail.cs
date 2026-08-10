@@ -75,6 +75,8 @@ internal static class WaitlistAlreadyJoinedEmail
             headingLead: "You&rsquo;re already on the",
             headingAccent: "waitlist!",
             bodyHtml: body,
+            buttonLabel: "Back to Home",
+            buttonUrl: branding.HomeUrl,
             footnote:
                 "If you didn&rsquo;t just try to join the Vulnwatch waitlist, you can safely ignore " +
                 "this email &mdash; nothing has changed.",
