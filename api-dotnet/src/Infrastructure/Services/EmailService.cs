@@ -8,6 +8,8 @@ namespace Infrastructure.Services;
 
 public class EmailService : IEmailService
 {
+    private const int SendTimeoutMs = 30_000;
+
     private readonly IConfiguration _config;
     private readonly ILogger<EmailService> _logger;
 
@@ -37,9 +39,12 @@ public class EmailService : IEmailService
             // STARTTLS, not implicit TLS — SmtpClient cannot do the latter, so this must be an
             // explicit-TLS port (587/2525/25). Pointing it at 465 hangs until the timeout below.
             EnableSsl = true,
-            // The 100s default ties up the request thread when a connection stalls.
-            Timeout = 30_000
+            // Documented as applying to synchronous Send only, so it does not bound SendMailAsync
+            // below — the CancellationTokenSource does that. Kept for the connect-phase paths.
+            Timeout = SendTimeoutMs
         };
+
+        using var timeout = new CancellationTokenSource(SendTimeoutMs);
 
         try
         {
@@ -53,7 +58,7 @@ public class EmailService : IEmailService
             };
 
 
-            await client.SendMailAsync(mail);
+            await client.SendMailAsync(mail, timeout.Token);
 
             _logger.LogInformation("Email sent to {Recipient} with subject '{Subject}'.", to, subject);
             return;
@@ -69,12 +74,20 @@ public class EmailService : IEmailService
                 to, credentials.Host, credentials.Port, credentials.Username, ex.StatusCode);
             return;
         }
+        catch (OperationCanceledException ex) when (timeout.IsCancellationRequested)
+        {
+            _logger.LogError(
+                ex,
+                "SMTP send to {Recipient} via {Host}:{Port} as {Sender} timed out after {TimeoutMs}ms.",
+                to, credentials.Host, credentials.Port, credentials.Username, SendTimeoutMs);
+            return;
+        }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Unexpected error while sending email to {Recipient} via {Host}:{Port}.",
-                to, credentials.Host, credentials.Port);
+                "Unexpected error while sending email to {Recipient} via {Host}:{Port} as {Sender}.",
+                to, credentials.Host, credentials.Port, credentials.Username);
             return;
         }
     }
