@@ -7,14 +7,24 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Least privilege: nothing here writes to the repo. Without this the default token
+# is read/write for the whole repository.
+permissions:
+  contents: read
+
 jobs:
   trivy-scan:
     name: Trivy Security Scan
-    if: github.event.pull_request.merged == true && github.event.repository.fork == false
+    # head.repo.full_name, not repository.fork: the latter describes the repo the
+    # workflow runs in (always false upstream), so it never actually guarded anything.
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Keeps the token out of .git/config, where later steps could read it.
+          persist-credentials: false
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
@@ -38,19 +48,24 @@ jobs:
 
   deploy:
     name: Deploy
-    if: github.event.pull_request.merged == true && github.event.repository.fork == false
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
     needs: [trivy-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
       name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
-    env:
-      HOST: ${{ secrets.HOST }}
-      USERNAME: ${{ secrets.USERNAME }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    # One deploy at a time per environment. The script stops services, swaps the
+    # publish directory and restarts; two overlapping runs would interleave those
+    # steps on the same server. Queued rather than cancelled so a merge is never
+    # silently skipped.
+    concurrency:
+      group: deploy-${{ github.event.pull_request.base.ref }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-
+      # No checkout: the build runs on the remote host via ssh, so the runner's
+      # workspace was never used. The secrets are passed to the action directly
+      # rather than through a job-level env block, which would have exposed them
+      # to every step in the job.
       - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
         with:
