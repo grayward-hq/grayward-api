@@ -61,6 +61,11 @@ jobs:
     concurrency:
       group: deploy-${{ github.event.pull_request.base.ref }}
       cancel-in-progress: false
+    # Overrides the workflow-level contents: read so the failure step below can
+    # open an issue. Scoped to this job rather than the whole workflow.
+    permissions:
+      contents: read
+      issues: write
     steps:
       # No checkout: the build runs on the remote host via ssh, so the runner's
       # workspace was never used. The secrets are passed to the action directly
@@ -187,6 +192,57 @@ jobs:
               exit 1
             fi
 
+            # ── Apply database migrations ─────────────────────────────────
+            # Runs after both builds and before services restart, so a failed
+            # migration aborts while the old build is still serving rather than
+            # leaving a new binary running against a stale schema. The app itself
+            # only self-migrates in Development (Program.cs), so without this step
+            # nothing ever applies them outside a developer's machine — which is how
+            # staging ended up missing AddWaitlistJoinOrigin and 500ing on every
+            # waitlist join.
+            echo "Applying database migrations..."
+
+            export PATH="$PATH:$HOME/.dotnet/tools"
+            if ! command -v dotnet-ef >/dev/null 2>&1; then
+              echo "Installing dotnet-ef..."
+              dotnet tool install --global dotnet-ef || dotnet tool update --global dotnet-ef
+            fi
+
+            # Read the connection string with grep rather than sourcing the env file.
+            # start.sh sources it and chokes on the multi-line PEM around line 56
+            # ("RSA: command not found"), which silently drops every variable after
+            # that point. Pulling out the one line we need avoids that entirely.
+            DB_CONN=$(grep -m1 '^ConnectionStrings__DefaultConnectionString=' "$API_ENV" | cut -d= -f2-)
+            DB_CONN="${DB_CONN%\"}"
+            DB_CONN="${DB_CONN#\"}"
+
+            if [ -z "$DB_CONN" ]; then
+              echo "ConnectionStrings__DefaultConnectionString not found in $API_ENV. Aborting before restart."
+              exit 1
+            fi
+
+            if ! ConnectionStrings__DefaultConnectionString="$DB_CONN" dotnet ef database update \
+                 --project "$DEPLOY_DIR/api-dotnet/src/Infrastructure" \
+                 --startup-project "$DEPLOY_DIR/api-dotnet/src/Web" \
+                 --configuration Release; then
+              echo "Database migration failed. Services left untouched on the previous build."
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back build artefacts..."
+                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
+                  rm -rf "$PUBLISH_DIR"
+                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                fi
+
+                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
+                  rm -rf "$JAR_DIR"
+                  cp -r "$JAR_BACKUP" "$JAR_DIR"
+                fi
+              fi
+              exit 1
+            fi
+
+            echo "Migrations applied."
+
             # ── Stop existing PM2 processes ───────────────────────────────
             echo "Stopping existing PM2 processes..."
             pm2 delete $API_NAME || true
@@ -259,3 +315,29 @@ jobs:
             echo "Deploy successful!"
             pm2 save
             pm2 list
+
+      # A failed deploy used to be silent. deploy.yml was invalid from 2026-07-07
+      # and every run failed in 0s for five weeks with nobody notified, while
+      # merged PRs appeared to ship. This opens an issue so the next outage is
+      # visible the same day. No external secrets needed — it uses GITHUB_TOKEN.
+      - name: Open an issue if the deploy failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ github.event.pull_request.base.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Deploy to $TARGET failed" \
+            --body "The deploy for $PR_URL did not complete, so **$TARGET is still running the previous build**.
+
+          Run: $RUN_URL
+
+          Check in this order:
+          1. Did the .NET or Java build fail? The script exits before touching services, so the old build is still serving.
+          2. Did \`dotnet ef database update\` fail? Same — services untouched, but code and schema are now out of step.
+          3. Did the health check fail on production? It rolls back automatically; confirm the rollback landed.
+
+          Do not merge further promotions to $TARGET until this is resolved." || true
