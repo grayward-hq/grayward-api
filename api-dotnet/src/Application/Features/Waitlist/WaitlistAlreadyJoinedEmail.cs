@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Domain.Enums;
 
 namespace Application.Features.Waitlist;
@@ -9,7 +10,7 @@ namespace Application.Features.Waitlist;
 /// already knows they signed up), never the party that submitted the form. The copy adapts to the
 /// entry's current status so the owner learns where they stand and what, if anything, to do next.
 /// </summary>
-/// <remarks>See <see cref="WaitlistEmailLayout"/> for the shared chrome.</remarks>
+/// <remarks>See <see cref="VulnwatchEmailLayout"/> for the shared chrome.</remarks>
 internal static class WaitlistAlreadyJoinedEmail
 {
     public const string Subject = "You're already on the Vulnwatch waitlist";
@@ -23,7 +24,7 @@ internal static class WaitlistAlreadyJoinedEmail
     /// Size of the confirmed queue, used as the card's denominator. Null suppresses the card.
     /// </param>
     public static string BuildBody(
-        WaitlistEmailBranding branding,
+        VulnwatchEmailBranding branding,
         WaitlistStatus status,
         long? livePosition,
         int? totalConfirmed)
@@ -31,32 +32,32 @@ internal static class WaitlistAlreadyJoinedEmail
         var body = status switch
         {
             WaitlistStatus.Pending =>
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "Good news &mdash; this email is <strong>already on the Vulnwatch waitlist</strong>. " +
                     "You joined before, so there&rsquo;s no need to sign up again.") +
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "You just haven&rsquo;t <strong>confirmed your email</strong> yet, so your spot isn&rsquo;t " +
                     "secured. Check your inbox (and spam folder) for the original confirmation email " +
                     "and click the confirmation link to lock in your position.", last: true),
 
             WaitlistStatus.EmailConfirmed =>
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "This email is <strong>already on the Vulnwatch waitlist</strong> and your email " +
                     "address is <strong>already confirmed</strong> &mdash; you&rsquo;re all set, there&rsquo;s " +
                     "nothing more to do.") +
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "We&rsquo;ll notify you the moment early access is available. Want to move up? " +
                     "Share your referral link &mdash; every person who joins with it moves you closer " +
                     "to the front.", last: true),
 
             WaitlistStatus.Promoted =>
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "This email has <strong>already been invited off the waitlist</strong> &mdash; you have " +
                     "a Vulnwatch account. Just sign in with this email; there&rsquo;s no need to join the " +
                     "waitlist again.", last: true),
 
             _ =>
-                WaitlistEmailLayout.Paragraph(
+                VulnwatchEmailLayout.Paragraph(
                     "This email is already associated with the Vulnwatch waitlist.", last: true),
         };
 
@@ -65,10 +66,10 @@ internal static class WaitlistAlreadyJoinedEmail
         var positionCard = status == WaitlistStatus.EmailConfirmed
                            && livePosition is long position
                            && totalConfirmed is int total
-            ? WaitlistEmailLayout.PositionCard(position, total)
+            ? VulnwatchEmailLayout.PositionCard(position, total)
             : null;
 
-        return WaitlistEmailLayout.Render(
+        return VulnwatchEmailLayout.Render(
             branding,
             title: "You're already on the waitlist",
             preheader: "You're already on the Vulnwatch waitlist — here's where you stand.",

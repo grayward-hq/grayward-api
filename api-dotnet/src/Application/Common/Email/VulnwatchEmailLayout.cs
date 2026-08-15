@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Application.Features.Waitlist;
+namespace Application.Common.Email;
 
 /// <summary>
 /// The shared chrome for branded waitlist emails — logo, mascot, heading, optional position card,
@@ -14,12 +14,12 @@ namespace Application.Features.Waitlist;
 /// strip &lt;style&gt; blocks entirely.
 /// </para>
 /// <para>
-/// Every image comes from <see cref="WaitlistEmailBranding"/> and is optional, so the mail still
+/// Every image comes from <see cref="VulnwatchEmailBranding"/> and is optional, so the mail still
 /// reads correctly with all images blocked — which is the default in most inboxes until the sender
 /// is trusted.
 /// </para>
 /// </remarks>
-internal static class WaitlistEmailLayout
+internal static class VulnwatchEmailLayout
 {
     /// <summary>
     /// Text green, deepened from the brand's <c>#A0E870</c>. That fill only reaches ~1.6:1 against the
@@ -50,7 +50,7 @@ internal static class WaitlistEmailLayout
     /// <param name="belowButton">Optional line directly under the button, e.g. a password-reset link.</param>
     /// <param name="infoCard">Optional green callout from <see cref="InfoCard"/>.</param>
     public static string Render(
-        WaitlistEmailBranding branding,
+        VulnwatchEmailBranding branding,
         string title,
         string preheader,
         string headingLead,
@@ -174,7 +174,7 @@ internal static class WaitlistEmailLayout
     }
 
     /// <summary>Logo lockup, falling back to a styled wordmark when no assets are hosted.</summary>
-    private static string BuildLogo(WaitlistEmailBranding branding)
+    private static string BuildLogo(VulnwatchEmailBranding branding)
     {
         var logo = branding.Asset("vulnwatch-logo.png");
 
@@ -193,7 +193,7 @@ internal static class WaitlistEmailLayout
     }
 
     /// <summary>Decorative mascot; omitted entirely when no assets are hosted.</summary>
-    private static string BuildMascot(WaitlistEmailBranding branding, string fileName)
+    private static string BuildMascot(VulnwatchEmailBranding branding, string fileName)
     {
         var mascot = branding.Asset(fileName);
         if (mascot is null)
@@ -260,7 +260,7 @@ internal static class WaitlistEmailLayout
     /// <see cref="BrandGreenFill"/> is safe for a text background — it reaches ~9:1 against
     /// <see cref="BrandDark"/>.
     /// </summary>
-    public static string InfoCard(WaitlistEmailBranding branding, string heading, string body)
+    public static string InfoCard(VulnwatchEmailBranding branding, string heading, string body)
     {
         var icon = branding.Asset("icon-lock.png");
 
@@ -313,13 +313,14 @@ internal static class WaitlistEmailLayout
     /// Footer social row. Only configured networks are rendered, so an unset one leaves no dead icon
     /// behind; icons need hosted assets, so without them the links degrade to text.
     /// </summary>
-    private static string BuildSocialLinks(WaitlistEmailBranding branding)
+    private static string BuildSocialLinks(VulnwatchEmailBranding branding)
     {
         var networks = new[]
         {
             (Url: branding.XUrl, Name: "X", Icon: "social-x.png"),
             (Url: branding.FacebookUrl, Name: "Facebook", Icon: "social-facebook.png"),
             (Url: branding.LinkedInUrl, Name: "LinkedIn", Icon: "social-linkedin.png"),
+            (Url: branding.InstagramUrl, Name: "Instagram", Icon: "social-instagram.png"),
         };
 
         var cells = string.Empty;

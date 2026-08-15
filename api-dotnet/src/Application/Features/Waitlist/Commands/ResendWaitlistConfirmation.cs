@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Application.Features.Auth.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -132,7 +133,7 @@ public class ResendWaitlistConfirmationHandler
         string cancellationLink)
     {
         var body = WaitlistConfirmationEmail.BuildBody(
-            WaitlistEmailBranding.From(_config), confirmLink, cancellationLink);
+            VulnwatchEmailBranding.From(_config), confirmLink, cancellationLink);
         await _emailService.SendAsync(email, WaitlistConfirmationEmail.Subject, body);
     }
 }

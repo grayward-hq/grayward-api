@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace Application.Features.Waitlist;
+namespace Application.Common.Email;
 
 /// <summary>
 /// Optional branding used to dress waitlist emails: hosted image assets, the "Back to Home" target
@@ -22,23 +22,25 @@ namespace Application.Features.Waitlist;
 /// URIs outright.
 /// </para>
 /// </remarks>
-internal sealed record WaitlistEmailBranding(
+internal sealed record VulnwatchEmailBranding(
     string? AssetsBase,
     string? HomeUrl,
     string? DashboardUrl,
     string? PasswordResetUrl,
     string? XUrl,
     string? FacebookUrl,
-    string? LinkedInUrl)
+    string? LinkedInUrl,
+    string? InstagramUrl)
 {
-    public static WaitlistEmailBranding From(IConfiguration config) => new(
+    public static VulnwatchEmailBranding From(IConfiguration config) => new(
         AssetsBase: ReadUrl(config, "FrontendUrl:AssetsBase")?.TrimEnd('/'),
         HomeUrl: ReadUrl(config, "FrontendUrl:Home"),
         DashboardUrl: ReadUrl(config, "FrontendUrl:Dashboard"),
         PasswordResetUrl: ReadUrl(config, "FrontendUrl:PasswordReset"),
         XUrl: ReadUrl(config, "Social:X"),
         FacebookUrl: ReadUrl(config, "Social:Facebook"),
-        LinkedInUrl: ReadUrl(config, "Social:LinkedIn"));
+        LinkedInUrl: ReadUrl(config, "Social:LinkedIn"),
+        InstagramUrl: ReadUrl(config, "Social:Instagram"));
 
     /// <summary>True when image assets are available, so templates can use them instead of fallbacks.</summary>
     public bool HasAssets => AssetsBase is not null;
