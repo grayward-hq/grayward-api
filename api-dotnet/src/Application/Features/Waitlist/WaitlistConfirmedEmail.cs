@@ -1,3 +1,4 @@
+using Application.Common.Email;
 namespace Application.Features.Waitlist;
 
 /// <summary>
@@ -6,7 +7,7 @@ namespace Application.Features.Waitlist;
 /// </summary>
 /// <remarks>
 /// Extracted from the handler so every waitlist mail is built the same way, through
-/// <see cref="WaitlistEmailLayout"/>.
+/// <see cref="VulnwatchEmailLayout"/>.
 /// </remarks>
 internal static class WaitlistConfirmedEmail
 {
@@ -16,21 +17,21 @@ internal static class WaitlistConfirmedEmail
     /// <param name="totalConfirmed">Size of the confirmed queue — the card's denominator.</param>
     /// <param name="referralLink">The recipient's personal referral link.</param>
     public static string BuildBody(
-        WaitlistEmailBranding branding,
+        VulnwatchEmailBranding branding,
         long position,
         int totalConfirmed,
-        string referralLink) => WaitlistEmailLayout.Render(
+        string referralLink) => VulnwatchEmailLayout.Render(
         branding,
         title: "You're in. Spot secured",
         preheader: $"Your spot is reserved — you're #{position} on the Vulnwatch waitlist.",
         headingLead: "You&rsquo;re in. Spot",
         headingAccent: "secured",
-        positionCard: WaitlistEmailLayout.PositionCard(position, totalConfirmed),
+        positionCard: VulnwatchEmailLayout.PositionCard(position, totalConfirmed),
         bodyHtml:
-            WaitlistEmailLayout.Paragraph("Welcome to Vulnwatch. Your spot is officially reserved.") +
-            WaitlistEmailLayout.Paragraph(
+            VulnwatchEmailLayout.Paragraph("Welcome to Vulnwatch. Your spot is officially reserved.") +
+            VulnwatchEmailLayout.Paragraph(
                 "We&rsquo;ll notify you the moment early access is available.") +
-            WaitlistEmailLayout.Paragraph(
+            VulnwatchEmailLayout.Paragraph(
                 "In the meantime, follow us for more updates.", last: true),
         buttonLabel: "Back to Home",
         buttonUrl: branding.HomeUrl,
