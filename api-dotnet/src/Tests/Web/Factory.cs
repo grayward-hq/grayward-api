@@ -5,7 +5,7 @@ using Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
+using Testcontainers.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,13 +23,38 @@ public sealed class NoOpEmailService : IEmailService
     public Task SendAsync(string to, string subject, string body) => Task.CompletedTask;
 }
 
+/// <summary>
+/// Integration-test host backed by a throwaway PostgreSQL container.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Previously this ran against in-memory SQLite, which could not create the schema at all: the model
+/// is Postgres-specific — an ICU collation (<c>case_insensitive</c>), <c>jsonb</c> and <c>xid</c>
+/// column types, and filtered indexes with Postgres predicates. Every integration test failed before
+/// reaching its assertions, and had for months.
+/// </para>
+/// <para>
+/// Running the real provider also means the schema under test is the one production uses, applied by
+/// the actual migrations rather than <c>EnsureCreated</c>. A migration that would fail on deploy now
+/// fails here first — which is the failure mode that took staging down for five weeks.
+/// </para>
+/// </remarks>
 public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private SqliteConnection? _connection;
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
+        .WithImage("postgres:15-alpine")
+        .WithDatabase("vulnwatch_tests")
+        .WithUsername("test")
+        .WithPassword("test")
+        .Build();
+
     private readonly Dictionary<string, string?> _originalEnvironmentVariables = new();
 
     public VulnWatchWebAppFactory()
     {
+        // Replaced in InitializeAsync with the container's real connection string. It has to be an
+        // environment variable rather than in-memory config because Program.cs reads configuration as
+        // it executes, before the factory's ConfigureAppConfiguration is applied at Build() time.
         SetDefaultEnvironmentVariable("ConnectionStrings__DefaultConnectionString", "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test");
         SetDefaultEnvironmentVariable("Jwt__SecretKey", "super-secret-test-key-32-chars-min!!");
         SetDefaultEnvironmentVariable("Jwt__ExpireInMinute", "60");
@@ -37,21 +62,23 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         SetDefaultEnvironmentVariable("Cors__AllowedOrigins__0", "https://test.example.com");
         SetDefaultEnvironmentVariable("Contact__InternalEmail", "support@example.com");
         SetDefaultEnvironmentVariable("Waitlist__CancellationTokenSecret", "test-waitlist-cancellation-secret-32-chars");
+        // Required during Program.cs's own pass, same reason as the connection string above.
+        // AddInfrastructure throws without GeoIp:BaseUrl, which failed the host outright.
+        SetDefaultEnvironmentVariable("GeoIp__BaseUrl", "http://geoip.test.local/");
+        SetDefaultEnvironmentVariable("GeoIp__TimeoutSeconds", "3");
+        // WaitlistLinks throws on a missing link setting rather than falling back.
+        SetDefaultEnvironmentVariable("FrontendUrl__WaitlistVerify", "https://test.example.com/waitlist/verify");
+        SetDefaultEnvironmentVariable("FrontendUrl__WaitlistCancel", "https://test.example.com/waitlist/cancel");
+        SetDefaultEnvironmentVariable("FrontendUrl__WaitlistJoin", "https://test.example.com/waitlist");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
         builder.ConfigureServices(services =>
         {
-            services.RemoveAll<DbContextOptions<VulnWatchDbContext>>();
-            services.RemoveAll<VulnWatchDbContext>();
-
-            services.AddDbContext<VulnWatchDbContext>(options =>
-                options.UseSqlite(_connection));
-
+            // The application's own Npgsql registration is left in place — it already points at the
+            // container via the connection string, so the test host wires its database exactly as
+            // production does. Only the genuinely external dependencies are faked below.
             services.RemoveAll<IEmailService>();
             services.AddSingleton<IEmailService, NoOpEmailService>();
 
@@ -77,7 +104,9 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnectionString"] = "Host=localhost;Database=vulnwatch_tests;Username=test;Password=test",
+                // Deliberately no ConnectionStrings:DefaultConnectionString here. This collection is
+                // applied after the environment variables, so a placeholder would override the
+                // container's real connection string set in InitializeAsync.
                 ["Jwt:SecretKey"] = "super-secret-test-key-32-chars-min!!",
                 ["Jwt:ExpireInMinute"] = "60",
                 ["Jwt:RefreshTokenExpiryDays"] = "7",
@@ -107,9 +136,19 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public async Task InitializeAsync()
     {
+        await _postgres.StartAsync();
+
+        // Set before Services is touched for the first time: accessing it builds the host, and the
+        // connection string has to be visible to Program.cs by then.
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__DefaultConnectionString", _postgres.GetConnectionString());
+
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<VulnWatchDbContext>();
-        await db.Database.EnsureCreatedAsync();
+
+        // Migrate rather than EnsureCreated, so the tests run against the schema the migrations
+        // actually produce — a broken migration fails here instead of on deploy.
+        await db.Database.MigrateAsync();
     }
 
     public new async Task DisposeAsync()
@@ -117,8 +156,7 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
         try
         {
             await base.DisposeAsync();
-            if (_connection is not null)
-                await _connection.DisposeAsync();
+            await _postgres.DisposeAsync();
         }
         finally
         {
