@@ -18,9 +18,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: Restore dependencies
-        run: dotnet restore api-dotnet/src/Web/Web.csproj
+        run: dotnet restore api-dotnet/Hng.Csharp.Web.sln
       - name: Build .NET API
-        run: dotnet build api-dotnet/src/Web/Web.csproj --no-restore --configuration Release
+        run: dotnet build api-dotnet/Hng.Csharp.Web.sln --no-restore --configuration Release
+      # This job was named "Build and Test" but only ever built, and only the Web project. Nothing
+      # ran the test suite, which is how 40 integration tests stayed red for months without anyone
+      # noticing. The integration tests need a Docker daemon for Testcontainers; GitHub-hosted
+      # runners provide one.
+      - name: Test .NET API
+        run: dotnet test api-dotnet/src/Tests/Tests.csproj --no-build --configuration Release --verbosity normal
 
   build-java:
     name: Build Java Worker
