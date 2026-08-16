@@ -36,7 +36,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -256,24 +256,26 @@ jobs:
             echo "Starting $WORKER_NAME..."
             pm2 start "java --enable-preview -jar $DEPLOY_DIR/worker-java/target/*.jar" --name "$WORKER_NAME"
 
-            # ── Health check (production only) ────────────────────────────
-            if [ "$BRANCH" = "main" ]; then
-              echo "Running health check..."
-              HEALTHY=false
-              for i in 1 2 3 4 5; do
-                sleep 3
-                STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health)
-                if [ "$STATUS" = "200" ]; then
-                  HEALTHY=true
-                  echo "Health check passed on attempt $i (HTTP $STATUS)"
-                  break
-                else
-                  echo "Attempt $i: HTTP $STATUS, retrying..."
-                fi
-              done
+            # ── Health check ──────────────────────────────────────────────
+            echo "Running health check..."
+            HEALTHY=false
+            for i in $(seq 1 15); do
+              sleep 3
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health)
+              if [ "$STATUS" = "200" ]; then
+                HEALTHY=true
+                echo "Health check passed on attempt $i (HTTP $STATUS)"
+                break
+              else
+                echo "Attempt $i: HTTP $STATUS, retrying..."
+              fi
+            done
 
-              if [ "$HEALTHY" = "false" ]; then
-                echo "Health check failed. Rolling back..."
+            if [ "$HEALTHY" = "false" ]; then
+              echo "Health check failed."
+
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back production..."
 
                 pm2 delete $API_NAME || true
                 pm2 delete $WORKER_NAME || true
@@ -295,10 +297,14 @@ jobs:
                 pm2 save
                 rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
                 echo "Rollback successful. Services are running on previous version."
-                exit 1
+              else
+                echo "WARNING: Staging health check failed. Deploy completed but the API may not be healthy."
               fi
+              exit 1
+            fi
 
-              # ── Cleanup backups after successful deploy ───────────────────
+            # ── Cleanup backups after successful deploy (production only) ─
+            if [ "$BRANCH" = "main" ]; then
               if [ -d "$PUBLISH_BACKUP" ]; then
                 echo "Cleaning up .NET backup..."
                 rm -rf "$PUBLISH_BACKUP"
