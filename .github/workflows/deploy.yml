@@ -36,7 +36,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
