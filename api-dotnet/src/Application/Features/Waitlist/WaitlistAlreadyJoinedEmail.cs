@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Domain.Enums;
 
 namespace Application.Features.Waitlist;
@@ -9,71 +10,77 @@ namespace Application.Features.Waitlist;
 /// already knows they signed up), never the party that submitted the form. The copy adapts to the
 /// entry's current status so the owner learns where they stand and what, if anything, to do next.
 /// </summary>
+/// <remarks>See <see cref="VulnwatchEmailLayout"/> for the shared chrome.</remarks>
 internal static class WaitlistAlreadyJoinedEmail
 {
     public const string Subject = "You're already on the Vulnwatch waitlist";
 
+    /// <param name="branding">Optional image assets and links.</param>
     /// <param name="status">The existing entry's status.</param>
     /// <param name="livePosition">
     /// Live queue position, only meaningful for a confirmed entry; null otherwise.
     /// </param>
-    public static string BuildBody(WaitlistStatus status, long? livePosition)
+    /// <param name="totalConfirmed">
+    /// Size of the confirmed queue, used as the card's denominator. Null suppresses the card.
+    /// </param>
+    public static string BuildBody(
+        VulnwatchEmailBranding branding,
+        WaitlistStatus status,
+        long? livePosition,
+        int? totalConfirmed)
     {
-        var message = status switch
+        var body = status switch
         {
-            WaitlistStatus.Pending => @"
-                <p style='font-size: 16px; color: #555;'>
-                    Good news — this email is <strong>already on the Vulnwatch waitlist</strong>.
-                    You joined before, so there's no need to sign up again.
-                </p>
-                <p style='font-size: 16px; color: #555;'>
-                    You just haven't <strong>confirmed your email</strong> yet, so your spot isn't
-                    secured. Check your inbox (and spam folder) for the original confirmation email
-                    and click the confirmation link to lock in your position.
-                </p>",
+            WaitlistStatus.Pending =>
+                VulnwatchEmailLayout.Paragraph(
+                    "Good news &mdash; this email is <strong>already on the Vulnwatch waitlist</strong>. " +
+                    "You joined before, so there&rsquo;s no need to sign up again.") +
+                VulnwatchEmailLayout.Paragraph(
+                    "You just haven&rsquo;t <strong>confirmed your email</strong> yet, so your spot isn&rsquo;t " +
+                    "secured. Check your inbox (and spam folder) for the original confirmation email " +
+                    "and click the confirmation link to lock in your position.", last: true),
 
-            WaitlistStatus.EmailConfirmed => $@"
-                <p style='font-size: 16px; color: #555;'>
-                    This email is <strong>already on the Vulnwatch waitlist</strong> and your email
-                    address is <strong>already confirmed</strong> — you're all set, there's nothing
-                    more to do.
-                </p>
-                <p style='font-size: 16px; color: #555;'>
-                    You're currently <strong>#{livePosition}</strong> in the queue. Want to move up?
-                    Share your referral link — every person who joins with it moves you closer to the
-                    front.
-                </p>",
+            WaitlistStatus.EmailConfirmed =>
+                VulnwatchEmailLayout.Paragraph(
+                    "This email is <strong>already on the Vulnwatch waitlist</strong> and your email " +
+                    "address is <strong>already confirmed</strong> &mdash; you&rsquo;re all set, there&rsquo;s " +
+                    "nothing more to do.") +
+                VulnwatchEmailLayout.Paragraph(
+                    "We&rsquo;ll notify you the moment early access is available. Want to move up? " +
+                    "Share your referral link &mdash; every person who joins with it moves you closer " +
+                    "to the front.", last: true),
 
-            WaitlistStatus.Promoted => @"
-                <p style='font-size: 16px; color: #555;'>
-                    This email has <strong>already been invited off the waitlist</strong> — you have
-                    a Vulnwatch account. Just sign in with this email; there's no need to join the
-                    waitlist again.
-                </p>",
+            WaitlistStatus.Promoted =>
+                VulnwatchEmailLayout.Paragraph(
+                    "This email has <strong>already been invited off the waitlist</strong> &mdash; you have " +
+                    "a Vulnwatch account. Just sign in with this email; there&rsquo;s no need to join the " +
+                    "waitlist again.", last: true),
 
-            _ => @"
-                <p style='font-size: 16px; color: #555;'>
-                    This email is already associated with the Vulnwatch waitlist.
-                </p>",
+            _ =>
+                VulnwatchEmailLayout.Paragraph(
+                    "This email is already associated with the Vulnwatch waitlist.", last: true),
         };
 
-        return $@"
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <title>You're already on the waitlist</title>
-    </head>
-    <body style='font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;'>
-        <div style='max-width: 600px; margin: auto; background: #ffffff; padding: 30px; border-radius: 8px;'>
-            <h2 style='color: #333;'>You're already on the list 🎯</h2>
-            {message}
-            <p style='font-size: 12px; color: #999; margin-top: 40px;'>
-                If you didn't just try to join the Vulnwatch waitlist, you can safely ignore this email —
-                nothing has changed.
-            </p>
-        </div>
-    </body>
-    </html>";
+        // The card is only shown for a confirmed entry: pending entries have not claimed a position
+        // yet and promoted ones have left the queue, so there is no honest number to display.
+        var positionCard = status == WaitlistStatus.EmailConfirmed
+                           && livePosition is long position
+                           && totalConfirmed is int total
+            ? VulnwatchEmailLayout.PositionCard(position, total)
+            : null;
+
+        return VulnwatchEmailLayout.Render(
+            branding,
+            title: "You're already on the waitlist",
+            preheader: "You're already on the Vulnwatch waitlist — here's where you stand.",
+            headingLead: "You&rsquo;re already on the",
+            headingAccent: "waitlist!",
+            bodyHtml: body,
+            buttonLabel: "Back to Home",
+            buttonUrl: branding.HomeUrl,
+            footnote:
+                "If you didn&rsquo;t just try to join the Vulnwatch waitlist, you can safely ignore " +
+                "this email &mdash; nothing has changed.",
+            positionCard: positionCard);
     }
 }

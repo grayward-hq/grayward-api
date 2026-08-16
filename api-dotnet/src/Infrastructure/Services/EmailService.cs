@@ -8,6 +8,8 @@ namespace Infrastructure.Services;
 
 public class EmailService : IEmailService
 {
+    private const int SendTimeoutMs = 30_000;
+
     private readonly IConfiguration _config;
     private readonly ILogger<EmailService> _logger;
 
@@ -34,8 +36,15 @@ public class EmailService : IEmailService
         using var client = new SmtpClient(credentials.Host, credentials.Port)
         {
             Credentials = new NetworkCredential(credentials.Username, credentials.Password),
-            EnableSsl = true
+            // STARTTLS, not implicit TLS — SmtpClient cannot do the latter, so this must be an
+            // explicit-TLS port (587/2525/25). Pointing it at 465 hangs until the timeout below.
+            EnableSsl = true,
+            // Documented as applying to synchronous Send only, so it does not bound SendMailAsync
+            // below — the CancellationTokenSource does that. Kept for the connect-phase paths.
+            Timeout = SendTimeoutMs
         };
+
+        using var timeout = new CancellationTokenSource(SendTimeoutMs);
 
         try
         {
@@ -49,19 +58,36 @@ public class EmailService : IEmailService
             };
 
 
-            await client.SendMailAsync(mail);
+            await client.SendMailAsync(mail, timeout.Token);
 
             _logger.LogInformation("Email sent to {Recipient} with subject '{Subject}'.", to, subject);
             return;
         }
         catch (SmtpException ex)
         {
-            _logger.LogError(ex, "SMTP failure while sending email to {Recipient}. Status: {StatusCode}.", to, ex.StatusCode);
+            // Host, port and sender are logged because SmtpException collapses most server-side
+            // rejections into GeneralFailure: without them there is no way to tell a wrong port from
+            // bad credentials from an unverified sending domain. The password is never logged.
+            _logger.LogError(
+                ex,
+                "SMTP failure while sending email to {Recipient} via {Host}:{Port} as {Sender}. Status: {StatusCode}.",
+                to, credentials.Host, credentials.Port, credentials.Username, ex.StatusCode);
+            return;
+        }
+        catch (OperationCanceledException ex) when (timeout.IsCancellationRequested)
+        {
+            _logger.LogError(
+                ex,
+                "SMTP send to {Recipient} via {Host}:{Port} as {Sender} timed out after {TimeoutMs}ms.",
+                to, credentials.Host, credentials.Port, credentials.Username, SendTimeoutMs);
             return;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error while sending email to {Recipient}.", to);
+            _logger.LogError(
+                ex,
+                "Unexpected error while sending email to {Recipient} via {Host}:{Port} as {Sender}.",
+                to, credentials.Host, credentials.Port, credentials.Username);
             return;
         }
     }

@@ -1,4 +1,77 @@
-- name: Deploy on server
+name: Build and Deploy
+on:
+  pull_request:
+    branches: [staging, main]
+    types: [closed]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Least privilege: nothing here writes to the repo. Without this the default token
+# is read/write for the whole repository.
+permissions:
+  contents: read
+
+jobs:
+  trivy-scan:
+    name: Trivy Security Scan
+    # head.repo.full_name, not repository.fork: the latter describes the repo the
+    # workflow runs in (always false upstream), so it never actually guarded anything.
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Keeps the token out of .git/config, where later steps could read it.
+          persist-credentials: false
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+      - name: Resolve Maven dependencies
+        run: |
+          cd worker-java
+          mvn dependency:resolve -q
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  deploy:
+    name: Deploy
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [trivy-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
+    # One deploy at a time per environment. The script stops services, swaps the
+    # publish directory and restarts; two overlapping runs would interleave those
+    # steps on the same server. Queued rather than cancelled so a merge is never
+    # silently skipped.
+    concurrency:
+      group: deploy-${{ github.event.pull_request.base.ref }}
+      cancel-in-progress: false
+    # Overrides the workflow-level contents: read so the failure step below can
+    # open an issue. Scoped to this job rather than the whole workflow.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # No checkout: the build runs on the remote host via ssh, so the runner's
+      # workspace was never used. The secrets are passed to the action directly
+      # rather than through a job-level env block, which would have exposed them
+      # to every step in the job.
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -64,6 +137,55 @@
 
             echo "Linking worker application.properties..."
             ln -sfn "$WORKER_ENV" "$DEPLOY_DIR/worker-java/src/main/resources/application.properties"
+
+            # ── Apply database migrations ─────────────────────────────────
+            # Deliberately before the builds. dotnet publish overwrites $PUBLISH_DIR
+            # in place and staging keeps no backup, so migrating after a build would
+            # leave the new binaries on disk if the migration failed — the old code
+            # keeps serving only until the next pm2 or host restart, which then
+            # silently brings up new code against an unmigrated schema. Running
+            # first means a migration failure aborts with nothing overwritten.
+            #
+            # The cost of this order is the reverse case: migrations land, then a
+            # build fails, leaving the schema ahead of the code. That is the safe
+            # direction and the reason migrations must stay expand-compatible —
+            # additive, no destructive changes in the same release as the code that
+            # depends on them.
+            #
+            # The app only self-migrates in Development (Program.cs), so without
+            # this nothing applies them outside a developer's machine — which is how
+            # staging ended up missing AddWaitlistJoinOrigin and 500ing on every
+            # waitlist join.
+            echo "Applying database migrations..."
+
+            export PATH="$PATH:$HOME/.dotnet/tools"
+            if ! command -v dotnet-ef >/dev/null 2>&1; then
+              echo "Installing dotnet-ef..."
+              dotnet tool install --global dotnet-ef || dotnet tool update --global dotnet-ef
+            fi
+
+            # Read the connection string with grep rather than sourcing the env file.
+            # start.sh sources it and chokes on the multi-line PEM around line 56
+            # ("RSA: command not found"), which silently drops every variable after
+            # that point. Pulling out the one line we need avoids that entirely.
+            DB_CONN=$(grep -m1 '^ConnectionStrings__DefaultConnectionString=' "$API_ENV" | cut -d= -f2-)
+            DB_CONN="${DB_CONN%\"}"
+            DB_CONN="${DB_CONN#\"}"
+
+            if [ -z "$DB_CONN" ]; then
+              echo "ConnectionStrings__DefaultConnectionString not found in $API_ENV. Aborting before anything is overwritten."
+              exit 1
+            fi
+
+            if ! ConnectionStrings__DefaultConnectionString="$DB_CONN" dotnet ef database update \
+                 --project "$DEPLOY_DIR/api-dotnet/src/Infrastructure" \
+                 --startup-project "$DEPLOY_DIR/api-dotnet/src/Web" \
+                 --configuration Release; then
+              echo "Database migration failed. Nothing was overwritten; the running services are untouched."
+              exit 1
+            fi
+
+            echo "Migrations applied."
 
             # ── Build .NET API ────────────────────────────────────────────
             echo "Building .NET API..."
@@ -191,3 +313,29 @@
             echo "Deploy successful!"
             pm2 save
             pm2 list
+
+      # A failed deploy used to be silent. deploy.yml was invalid from 2026-07-07
+      # and every run failed in 0s for five weeks with nobody notified, while
+      # merged PRs appeared to ship. This opens an issue so the next outage is
+      # visible the same day. No external secrets needed — it uses GITHUB_TOKEN.
+      - name: Open an issue if the deploy failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ github.event.pull_request.base.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Deploy to $TARGET failed" \
+            --body "The deploy for $PR_URL did not complete, so **$TARGET is still running the previous build**.
+
+          Run: $RUN_URL
+
+          Check in this order:
+          1. Did the .NET or Java build fail? The script exits before touching services, so the old build is still serving.
+          2. Did \`dotnet ef database update\` fail? Same — services untouched, but code and schema are now out of step.
+          3. Did the health check fail on production? It rolls back automatically; confirm the rollback landed.
+
+          Do not merge further promotions to $TARGET until this is resolved." || true
