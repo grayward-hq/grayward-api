@@ -261,7 +261,7 @@ jobs:
             HEALTHY=false
             for i in $(seq 1 15); do
               sleep 3
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health)
+              STATUS=$(curl -s --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health || echo "000")
               if [ "$STATUS" = "200" ]; then
                 HEALTHY=true
                 echo "Health check passed on attempt $i (HTTP $STATUS)"
@@ -297,10 +297,10 @@ jobs:
                 pm2 save
                 rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
                 echo "Rollback successful. Services are running on previous version."
+                exit 1
               else
                 echo "WARNING: Staging health check failed. Deploy completed but the API may not be healthy."
               fi
-              exit 1
             fi
 
             # ── Cleanup backups after successful deploy (production only) ─
