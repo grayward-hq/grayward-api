@@ -21,12 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Keeps the token out of .git/config, where later steps could read it.
           persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -36,7 +36,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -72,7 +72,7 @@ jobs:
       # rather than through a job-level env block, which would have exposed them
       # to every step in the job.
       - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -122,11 +122,23 @@ jobs:
               fi
             fi
 
-            # ── Pull latest code ──────────────────────────────────────────
-            echo "Pulling latest code from $BRANCH..."
+            # ── Check out the exact commit that was scanned ───────────────
+            # Previously this pulled the branch tip, which is not necessarily the
+            # commit trivy-scan just approved: anything merged between the scan and
+            # the deploy shipped unscanned. Checking out the merge commit for this
+            # run closes that window and makes the deploy reproducible — re-running
+            # it deploys the same code rather than whatever has landed since.
+            DEPLOY_SHA="${{ github.event.pull_request.merge_commit_sha || github.sha }}"
+            echo "Deploying $DEPLOY_SHA on $BRANCH..."
             cd "$DEPLOY_DIR"
-            git reset --hard HEAD
-            git pull origin "$BRANCH"
+            git fetch origin "$BRANCH"
+
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Commit $DEPLOY_SHA not found after fetching $BRANCH. Aborting before anything is overwritten."
+              exit 1
+            fi
+
+            git reset --hard "$DEPLOY_SHA"
 
             # ── Symlink env files and start script ────────────────────────
             echo "Linking start.sh..."
