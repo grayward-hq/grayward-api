@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -201,7 +202,8 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         string confirmLink,
         string cancellationLink)
     {
-        var body = WaitlistConfirmationEmail.BuildBody(confirmLink, cancellationLink);
+        var body = WaitlistConfirmationEmail.BuildBody(
+            VulnwatchEmailBranding.From(_config), confirmLink, cancellationLink);
         await _emailService.SendAsync(email, WaitlistConfirmationEmail.Subject, body);
     }
 
@@ -221,12 +223,19 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             // Position is only meaningful for a confirmed entry — the live rank among active
             // entries (so cancellations shift everyone up). Pending/promoted entries have none.
             long? livePosition = null;
+            int? totalConfirmed = null;
             if (entry.Status == WaitlistStatus.EmailConfirmed && entry.Position is long sequence)
             {
                 livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
+
+                // Denominator for the "#5 out of 126" card. Counts confirmed entries specifically —
+                // the same population GetLivePosition ranks within — so the two numbers agree. A
+                // total over all rows would include cancelled and promoted entries and inflate it.
+                totalConfirmed = await _waitlistRepo.CountByStatus(WaitlistStatus.EmailConfirmed, ct);
             }
 
-            var body = WaitlistAlreadyJoinedEmail.BuildBody(entry.Status, livePosition);
+            var body = WaitlistAlreadyJoinedEmail.BuildBody(
+                VulnwatchEmailBranding.From(_config), entry.Status, livePosition, totalConfirmed);
             await _emailService.SendAsync(entry.Email, WaitlistAlreadyJoinedEmail.Subject, body);
             _logger.LogInformation("Already-on-waitlist notice sent to existing entry {waitlistEntryId}", entry.Id);
         }
@@ -248,7 +257,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
                 return;
             }
 
-            var body = WaitlistAlreadyRegisteredEmail.BuildBody();
+            var body = WaitlistAlreadyRegisteredEmail.BuildBody(VulnwatchEmailBranding.From(_config));
             await _emailService.SendAsync(email, WaitlistAlreadyRegisteredEmail.Subject, body);
             _logger.LogInformation("Already-registered notice sent to user {userId}", userId);
         }
