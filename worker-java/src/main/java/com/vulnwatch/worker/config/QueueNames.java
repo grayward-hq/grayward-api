@@ -15,16 +15,24 @@ public class QueueNames {
     @Value("${worker.domain.result.queue:domain-intel}")
     private String domainIntelBase;
 
+    @Value("${worker.repository.result.queue:repository-intel}")
+    private String repositoryIntelBase;
+
     @Value("${worker.dlq.key:dead-letter}")
     private String dlqBase;
 
     @Value("${worker.ai.status.key:ai:status}")
     private String aiStatusBase;
 
-    public String scanJobs()   { return prefixed(scanJobsBase); }
+    @Value("${worker.state.channel:scan-state-events}")
+    private String scanStateChannelBase;
+
+    public String scanJobs() { return prefixed(scanJobsBase); }
     public String domainIntel() { return prefixed(domainIntelBase); }
-    public String dlq()        { return prefixed(dlqBase); }
-    public String aiStatus()   { return prefixed(aiStatusBase); }
+    public String repositoryIntel() { return prefixed(repositoryIntelBase); }
+    public String dlq() { return prefixed(dlqBase); }
+    public String aiStatus() { return prefixed(aiStatusBase); }
+    public String scanStateChannel() { return prefixed(scanStateChannelBase); }
 
     private String prefixed(String base) {
         return env.equals("local") ? base : env + ":" + base;
