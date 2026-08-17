@@ -1,3 +1,4 @@
+using Application.Features.Waitlist;
 using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
 using Domain.Common;
@@ -21,7 +22,7 @@ public class JoinWaitlistHandlerTests
     private readonly Mock<IConfiguration> _mockConfig;
     private readonly Mock<IWaitlistCancellationTokenService> _mockCancellationTokenService;
     private readonly Mock<UserManager<UserEntity>> _mockUserManager;
-    private readonly Mock<IRedisService> _mockRedis;
+    private readonly Mock<IWaitlistMailQueue> _mockQueue;
     private readonly Mock<IHttpContextAccessor> _mockHttp;
     private readonly Mock<ILogger<JoinWaitlistHandler>> _mockLogger;
     private readonly JoinWaitlistHandler _handler;
@@ -33,7 +34,7 @@ public class JoinWaitlistHandlerTests
         _mockConfig = new Mock<IConfiguration>();
         _mockCancellationTokenService = new Mock<IWaitlistCancellationTokenService>();
         _mockUserManager = MockUserManager();
-        _mockRedis = new Mock<IRedisService>();
+        _mockQueue = new Mock<IWaitlistMailQueue>();
         _mockHttp = new Mock<IHttpContextAccessor>();
         _mockLogger = new Mock<ILogger<JoinWaitlistHandler>>();
 
@@ -43,11 +44,6 @@ public class JoinWaitlistHandlerTests
         _mockCancellationTokenService
             .Setup(s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()))
             .Returns("cancel-token");
-        // Default: cooldown slot is free, so throttled emails are allowed to send.
-        _mockRedis
-            .Setup(r => r.TryClaimEmailCooldownSlot(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
 
         _handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object,
@@ -55,7 +51,7 @@ public class JoinWaitlistHandlerTests
             _mockConfig.Object,
             _mockCancellationTokenService.Object,
             _mockUserManager.Object,
-            _mockRedis.Object,
+            _mockQueue.Object,
             _mockHttp.Object,
             _mockLogger.Object);
     }
@@ -193,11 +189,13 @@ public class JoinWaitlistHandlerTests
 
         // No new entry is created for a duplicate...
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
-        // ...but the address owner is notified they're already on the list (the API response stays
-        // generic, so this leaks nothing to a form-submitting attacker).
-        _mockEmailService.Verify(
-            es => es.SendAsync(existingEntry.Email, It.IsAny<string>(), It.IsAny<string>()),
-            Times.Once);
+        // ...but a notice is queued for the address owner. It is queued rather than sent inline
+        // because doing the eligibility check and send here made this path cost measurably more
+        // than a miss, and the API response is masked either way. WaitlistMailDispatcher decides
+        // whether anything actually goes out.
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.Is<WaitlistMailJob>(j => j.Kind == WaitlistMailKind.AlreadyJoinedNotice),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -217,10 +215,11 @@ public class JoinWaitlistHandlerTests
         // Assert: same masked response, and the owner is still notified...
         Assert.True(result.IsSuccess);
         Assert.Equal(WaitlistStatus.Pending, result.Value!.Status);
-        _mockEmailService.Verify(
-            es => es.SendAsync(existingEntry.Email, It.IsAny<string>(), It.IsAny<string>()),
-            Times.Once);
-        // ...but a pending entry has no position, so no live-position lookup is made.
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.Is<WaitlistMailJob>(j => j.Kind == WaitlistMailKind.AlreadyJoinedNotice),
+            It.IsAny<CancellationToken>()), Times.Once);
+        // ...and the handler looks nothing up: position resolution now happens in the dispatcher,
+        // which is the point — the request path must not do work that varies by recipient.
         _mockWaitlistRepo.Verify(r => r.GetLivePosition(It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -247,35 +246,35 @@ public class JoinWaitlistHandlerTests
 
         // No waitlist entry is created for an already-registered email...
         _mockWaitlistRepo.Verify(r => r.AddAsync(It.IsAny<WaitlistEntity>(), It.IsAny<CancellationToken>()), Times.Never);
-        // ...but the owner is notified they already have an account (masked API response unchanged).
-        _mockEmailService.Verify(
-            es => es.SendAsync(existingUser.Email!, It.IsAny<string>(), It.IsAny<string>()),
-            Times.Once);
+        // ...but an already-registered notice is queued for the owner (masked response unchanged).
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.Is<WaitlistMailJob>(j => j.Kind == WaitlistMailKind.AlreadyRegisteredNotice),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// The handler never sends a notice itself, throttled or not — it only queues. Throttling moved
+    /// to WaitlistMailDispatcher, where suppressing a send costs the caller no observable time.
+    /// Coverage for the throttle itself lives in WaitlistMailDispatcherTests.
+    /// </summary>
     [Fact]
-    public async Task Handle_WhenNoticeThrottled_DoesNotSendAlreadyJoinedEmail()
+    public async Task Handle_ForANotice_QueuesRatherThanSendingInline()
     {
-        // Arrange: a duplicate whose per-recipient cooldown slot is already held.
         var cmd = new JoinWaitlistCommand("test@example.com");
         var existingEntry = WaitlistEntity.Create("test@example.com");
         existingEntry.GenerateEmailConfirmationToken("pending-token");
 
         _mockWaitlistRepo.Setup(r => r.FindByEmail(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingEntry);
-        _mockRedis
-            .Setup(r => r.TryClaimEmailCooldownSlot(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false); // throttled
 
-        // Act
         var result = await _handler.Handle(cmd, CancellationToken.None);
 
-        // Assert: still masked success, but the throttle suppressed the email.
         Assert.True(result.IsSuccess);
         _mockEmailService.Verify(
             es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never);
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.IsAny<WaitlistMailJob>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -306,7 +305,7 @@ public class JoinWaitlistHandlerTests
         var handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, config,
             _mockCancellationTokenService.Object, _mockUserManager.Object,
-            _mockRedis.Object, http.Object, _mockLogger.Object);
+            _mockQueue.Object, http.Object, _mockLogger.Object);
 
         // Act
         await handler.Handle(new JoinWaitlistCommand("new@example.com"), CancellationToken.None);
@@ -347,7 +346,7 @@ public class JoinWaitlistHandlerTests
         var handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, config,
             _mockCancellationTokenService.Object, _mockUserManager.Object,
-            _mockRedis.Object, http.Object, _mockLogger.Object);
+            _mockQueue.Object, http.Object, _mockLogger.Object);
 
         // Act
         await handler.Handle(new JoinWaitlistCommand("new@example.com"), CancellationToken.None);
@@ -387,7 +386,7 @@ public class JoinWaitlistHandlerTests
         var handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, config,
             _mockCancellationTokenService.Object, _mockUserManager.Object,
-            _mockRedis.Object, http.Object, _mockLogger.Object);
+            _mockQueue.Object, http.Object, _mockLogger.Object);
 
         // Act
         await handler.Handle(new JoinWaitlistCommand("new@example.com"), CancellationToken.None);
@@ -425,7 +424,7 @@ public class JoinWaitlistHandlerTests
         var handler = new JoinWaitlistHandler(
             _mockWaitlistRepo.Object, _mockEmailService.Object, config,
             _mockCancellationTokenService.Object, _mockUserManager.Object,
-            _mockRedis.Object, http.Object, _mockLogger.Object);
+            _mockQueue.Object, http.Object, _mockLogger.Object);
 
         // Act
         await handler.Handle(new JoinWaitlistCommand("new@example.com"), CancellationToken.None);
