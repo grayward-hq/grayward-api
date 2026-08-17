@@ -6,6 +6,13 @@ on:
     branches: ['**']
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Least privilege: nothing here writes to the repository. Without this the default
+# token is read/write across it, and this workflow runs on every branch and every
+# pull request — including from forks.
+permissions:
+  contents: read
+
 jobs:
   build-dotnet:
     name: Build and Test .NET API

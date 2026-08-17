@@ -153,14 +153,23 @@ public class VulnWatchWebAppFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public new async Task DisposeAsync()
     {
+        // Nested finally blocks so each step still runs when an earlier one throws. If host disposal
+        // failed, the container would otherwise be left running — a leaked Docker container per
+        // failed teardown, which accumulates across a CI run.
         try
         {
             await base.DisposeAsync();
-            await _postgres.DisposeAsync();
         }
         finally
         {
-            RestoreEnvironmentVariables();
+            try
+            {
+                await _postgres.DisposeAsync();
+            }
+            finally
+            {
+                RestoreEnvironmentVariables();
+            }
         }
     }
 
