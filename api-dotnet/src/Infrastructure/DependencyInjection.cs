@@ -1,3 +1,4 @@
+using Application.Features.Waitlist;
 ﻿using Application.Behaviours;
 using Application.Catalogs;
 using Application.Features.Alerts;
@@ -134,6 +135,8 @@ namespace Infrastructure
             services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
             services.AddScoped<IFindingRepository, FindingRepository>();
             services.AddScoped<IEmailService, EmailService>();
+            services.AddScoped<IWaitlistMailDispatcher, WaitlistMailDispatcher>();
+            services.AddSingleton<IWaitlistMailQueue, WaitlistMailQueue>();
             services.AddScoped<ITokenService, TokenService>();
 
             services.AddSingleton<LookupClient>(_ =>

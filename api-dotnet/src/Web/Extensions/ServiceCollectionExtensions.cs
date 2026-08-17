@@ -1,3 +1,4 @@
+using Web.Workers.Waitlist;
 ﻿using Application.Features.Auth;
 using Application.Interfaces;
 using FluentValidation;
@@ -34,6 +35,7 @@ namespace Web.Extensions
             services.AddHostedService<AlertOutboxProcessor>();
             services.AddHostedService<ScanReaperWorker>();
             services.AddHostedService<DomainVerificationReaper>();
+            services.AddHostedService<WaitlistMailWorker>();
 
             services.AddScoped<ScanDispatchService>();
             services.AddScoped<SslExpiryCheckService>();

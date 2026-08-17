@@ -27,12 +27,20 @@ namespace Application.Features.Waitlist;
 /// </remarks>
 internal static class WaitlistLinks
 {
-    public static string BuildConfirmationLink(IConfiguration config, HttpRequest? request, string email, string token)
-        => $"{ResolveBaseUrl(config, request, "FrontendUrl:WaitlistVerify")}" +
+    /// <param name="preferredOrigin">
+    /// An origin captured earlier, for callers with no live request — the background mail worker
+    /// builds these links off the request thread. Re-validated against the allowlist here, so a
+    /// stored origin that has since been removed from config is rejected like any other.
+    /// </param>
+    public static string BuildConfirmationLink(
+        IConfiguration config, HttpRequest? request, string email, string token, string? preferredOrigin = null)
+        => $"{ResolveBaseUrl(config, request, "FrontendUrl:WaitlistVerify", preferredOrigin)}" +
            $"?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
 
-    public static string BuildCancellationLink(IConfiguration config, HttpRequest? request, string email, string token)
-        => $"{ResolveBaseUrl(config, request, "FrontendUrl:WaitlistCancel")}" +
+    /// <inheritdoc cref="BuildConfirmationLink"/>
+    public static string BuildCancellationLink(
+        IConfiguration config, HttpRequest? request, string email, string token, string? preferredOrigin = null)
+        => $"{ResolveBaseUrl(config, request, "FrontendUrl:WaitlistCancel", preferredOrigin)}" +
            $"?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
 
     public static string BuildReferralLink(
