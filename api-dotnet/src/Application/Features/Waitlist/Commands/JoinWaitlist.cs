@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -28,7 +29,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
     private readonly IConfiguration _config;
     private readonly IWaitlistCancellationTokenService _cancellationTokenService;
     private readonly UserManager<User> _userManager;
-    private readonly IRedisService _redis;
+    private readonly IWaitlistMailQueue _mailQueue;
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<JoinWaitlistHandler> _logger;
 
@@ -38,7 +39,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         IConfiguration config,
         IWaitlistCancellationTokenService cancellationTokenService,
         UserManager<User> userManager,
-        IRedisService redis,
+        IWaitlistMailQueue mailQueue,
         IHttpContextAccessor http,
         ILogger<JoinWaitlistHandler> logger)
     {
@@ -47,7 +48,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         _config = config;
         _cancellationTokenService = cancellationTokenService;
         _userManager = userManager;
-        _redis = redis;
+        _mailQueue = mailQueue;
         _http = http;
         _logger = logger;
     }
@@ -78,7 +79,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
             // API response stays generic, so this reveals nothing to a form-submitting attacker — the
             // mail only reaches the mailbox owner. Best-effort: a send failure must not change the
             // masked response.
-            await SendAlreadyJoinedEmail(existingWaitlistEntry, ct);
+            await EnqueueNotice(WaitlistMailKind.AlreadyJoinedNotice, normalizedEmail, ct);
 
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
@@ -91,7 +92,7 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
 
             // Same masking rationale as the already-on-waitlist branch: notify the real address owner
             // (who already has an account) without revealing anything to a form-submitting attacker.
-            await SendAlreadyRegisteredEmail(normalizedEmail, existingUser.Id, ct);
+            await EnqueueNotice(WaitlistMailKind.AlreadyRegisteredNotice, normalizedEmail, ct);
 
             return Result<WaitlistResponse>.Success(genericSuccessResponse);
         }
@@ -202,67 +203,29 @@ public class JoinWaitlistHandler : IRequestHandler<JoinWaitlistCommand, Result<W
         string cancellationLink)
     {
         var body = WaitlistConfirmationEmail.BuildBody(
-            WaitlistEmailBranding.From(_config), confirmLink, cancellationLink);
+            VulnwatchEmailBranding.From(_config), confirmLink, cancellationLink);
         await _emailService.SendAsync(email, WaitlistConfirmationEmail.Subject, body);
     }
 
-    private async Task SendAlreadyJoinedEmail(WaitlistEntity entry, CancellationToken ct)
+    /// <summary>
+    /// Queues one of the masked notices. Deliberately does no eligibility check, throttle claim or
+    /// send: those made these paths cost more than they otherwise would, and the endpoint returns
+    /// the same masked body regardless, so the extra time was the only readable signal. The worker
+    /// re-reads the entry and decides whether anything goes out.
+    /// </summary>
+    private async Task EnqueueNotice(WaitlistMailKind kind, string email, CancellationToken ct)
     {
         try
         {
-            // Throttle: this notice is triggered by whoever submits the address, so cap it per
-            // recipient to prevent inbox flooding. Skip silently when a recent send holds the slot.
-            if (!await _redis.TryClaimEmailCooldownSlot(
-                    WaitlistEmailThrottle.Purpose, entry.Email, WaitlistEmailThrottle.Cooldown(_config), ct))
-            {
-                _logger.LogInformation("Already-on-waitlist notice throttled for existing entry {waitlistEntryId}", entry.Id);
-                return;
-            }
-
-            // Position is only meaningful for a confirmed entry — the live rank among active
-            // entries (so cancellations shift everyone up). Pending/promoted entries have none.
-            long? livePosition = null;
-            int? totalConfirmed = null;
-            if (entry.Status == WaitlistStatus.EmailConfirmed && entry.Position is long sequence)
-            {
-                livePosition = await _waitlistRepo.GetLivePosition(sequence, ct);
-
-                // Denominator for the "#5 out of 126" card. Counts confirmed entries specifically —
-                // the same population GetLivePosition ranks within — so the two numbers agree. A
-                // total over all rows would include cancelled and promoted entries and inflate it.
-                totalConfirmed = await _waitlistRepo.CountByStatus(WaitlistStatus.EmailConfirmed, ct);
-            }
-
-            var body = WaitlistAlreadyJoinedEmail.BuildBody(
-                WaitlistEmailBranding.From(_config), entry.Status, livePosition, totalConfirmed);
-            await _emailService.SendAsync(entry.Email, WaitlistAlreadyJoinedEmail.Subject, body);
-            _logger.LogInformation("Already-on-waitlist notice sent to existing entry {waitlistEntryId}", entry.Id);
+            await _mailQueue.EnqueueAsync(
+                new WaitlistMailJob(
+                    kind, email, WaitlistLinks.ResolveAllowedOrigin(_config, _http.HttpContext?.Request)),
+                ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send already-on-waitlist notice to entry {waitlistEntryId}.", entry.Id);
-        }
-    }
-
-    private async Task SendAlreadyRegisteredEmail(string email, Guid userId, CancellationToken ct)
-    {
-        try
-        {
-            // Same per-recipient throttle as the already-on-waitlist notice.
-            if (!await _redis.TryClaimEmailCooldownSlot(
-                    WaitlistEmailThrottle.Purpose, email, WaitlistEmailThrottle.Cooldown(_config), ct))
-            {
-                _logger.LogInformation("Already-registered notice throttled for user {userId}", userId);
-                return;
-            }
-
-            var body = WaitlistAlreadyRegisteredEmail.BuildBody(WaitlistEmailBranding.From(_config));
-            await _emailService.SendAsync(email, WaitlistAlreadyRegisteredEmail.Subject, body);
-            _logger.LogInformation("Already-registered notice sent to user {userId}", userId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send already-registered notice to user {userId}.", userId);
+            // Swallowed: the masked response must not change because the queue is unavailable.
+            _logger.LogError(ex, "Failed to enqueue a waitlist {kind} notice", kind);
         }
     }
 

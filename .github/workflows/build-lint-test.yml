@@ -4,32 +4,50 @@ on:
     branches: ['**']
   pull_request:
     branches: ['**']
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Least privilege: nothing here writes to the repository. Without this the default
+# token is read/write across it, and this workflow runs on every branch and every
+# pull request — including from forks.
+permissions:
+  contents: read
+
 jobs:
   build-dotnet:
     name: Build and Test .NET API
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
       - name: Restore dependencies
-        run: dotnet restore api-dotnet/src/Web/Web.csproj
+        run: dotnet restore api-dotnet/Hng.Csharp.Web.sln
       - name: Build .NET API
-        run: dotnet build api-dotnet/src/Web/Web.csproj --no-restore --configuration Release
+        run: dotnet build api-dotnet/Hng.Csharp.Web.sln --no-restore --configuration Release
+      # This job was named "Build and Test" but only ever built, and only the Web project. Nothing
+      # ran the test suite, which is how 40 integration tests stayed red for months without anyone
+      # noticing. The integration tests need a Docker daemon for Testcontainers; GitHub-hosted
+      # runners provide one.
+      - name: Test .NET API
+        run: dotnet test api-dotnet/src/Tests/Tests.csproj --no-build --configuration Release --verbosity normal
 
   build-java:
     name: Build Java Worker
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -45,9 +63,11 @@ jobs:
     timeout-minutes: 15
     needs: [build-dotnet, build-java]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -57,7 +77,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'

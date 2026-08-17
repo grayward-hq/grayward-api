@@ -1,245 +1,100 @@
+using Application.Features.Waitlist;
 using Application.Features.Waitlist.Commands;
 using Application.Interfaces;
-using Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
-using WaitlistEntity = global::Domain.Entities.Waitlist;
-
 namespace Tests.Application.Waitlist.Commands;
 
+/// <summary>
+/// The handler's whole job is now to enqueue and return. Eligibility, throttling and sending moved
+/// to <see cref="WaitlistMailDispatcher"/> — deliberately, because doing them here made a hit
+/// measurably slower than a miss and that timing difference partially defeated the masked response.
+/// Those rules are covered by <c>WaitlistMailDispatcherTests</c>; what matters here is that the
+/// handler behaves identically no matter what address it is given.
+/// </summary>
 public class RequestWaitlistCancellationHandlerTests
 {
     private const string GenericMessage =
         "If this email is on the waitlist, a cancellation link has been sent.";
 
-    private readonly Mock<IWaitlistRepository> _mockWaitlistRepo;
-    private readonly Mock<IWaitlistCancellationTokenService> _mockTokenService;
-    private readonly Mock<IEmailService> _mockEmailService;
-    private readonly Mock<IConfiguration> _mockConfig;
-    private readonly Mock<IRedisService> _mockRedis;
-    private readonly Mock<IHttpContextAccessor> _mockHttp;
-    private readonly Mock<ILogger<RequestWaitlistCancellationHandler>> _mockLogger;
+    private readonly Mock<IWaitlistMailQueue> _mockQueue = new();
+    private readonly Mock<IConfiguration> _mockConfig = new();
+    private readonly Mock<IHttpContextAccessor> _mockHttp = new();
+    private readonly Mock<ILogger<RequestWaitlistCancellationHandler>> _mockLogger = new();
     private readonly RequestWaitlistCancellationHandler _handler;
 
     public RequestWaitlistCancellationHandlerTests()
     {
-        _mockWaitlistRepo = new Mock<IWaitlistRepository>();
-        _mockTokenService = new Mock<IWaitlistCancellationTokenService>();
-        _mockEmailService = new Mock<IEmailService>();
-        _mockConfig = new Mock<IConfiguration>();
-        _mockRedis = new Mock<IRedisService>();
-        _mockHttp = new Mock<IHttpContextAccessor>();
-        _mockLogger = new Mock<ILogger<RequestWaitlistCancellationHandler>>();
-
-        _mockConfig.Setup(c => c["FrontendUrl:WaitlistCancel"])
-            .Returns("https://app.example.com/waitlist/cancel");
-        _mockTokenService
-            .Setup(s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()))
-            .Returns("cancel token");
-        _mockEmailService
-            .Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
-        // Default: cooldown slot is free, so the cancellation link is allowed to send.
-        _mockRedis
-            .Setup(r => r.TryClaimEmailCooldownSlot(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
         _handler = new RequestWaitlistCancellationHandler(
-            _mockWaitlistRepo.Object,
-            _mockTokenService.Object,
-            _mockEmailService.Object,
-            _mockConfig.Object,
-            _mockRedis.Object,
-            _mockHttp.Object,
-            _mockLogger.Object);
+            _mockQueue.Object, _mockConfig.Object, _mockHttp.Object, _mockLogger.Object);
     }
 
     [Fact]
-    public async Task Handle_WithPendingEntry_SendsCancellationLinkAndReturnsGenericSuccess()
+    public async Task Handle_EnqueuesACancellationLinkJob()
     {
-        // Arrange
-        var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null);
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-
-        // Act
         var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
+            new RequestWaitlistCancellationCommand("someone@example.com"), CancellationToken.None);
 
-        // Assert
         Assert.True(result.IsSuccess);
         Assert.Equal(GenericMessage, result.Value!.Message);
 
-        _mockTokenService.Verify(s => s.GenerateToken(entry.Id, email), Times.Once);
-        _mockEmailService.Verify(es => es.SendAsync(
-            email,
-            "Cancel your Vulnwatch waitlist spot",
-            It.Is<string>(body => body.Contains("https://app.example.com/waitlist/cancel?email=test%40example.com&token=cancel%20token"))),
-            Times.Once);
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.Is<WaitlistMailJob>(j =>
+                j.Kind == WaitlistMailKind.CancellationLink &&
+                j.Email == "someone@example.com"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_WhenThrottled_ReturnsGenericSuccessWithoutTokenOrEmail()
+    public async Task Handle_NormalisesTheEmailBeforeQueueing()
     {
-        // Arrange: an eligible pending entry, but the per-recipient cooldown slot is already held.
-        var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null);
+        await _handler.Handle(
+            new RequestWaitlistCancellationCommand("  MiXeD@Example.COM  "), CancellationToken.None);
 
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-        _mockRedis.Setup(r => r.TryClaimEmailCooldownSlot(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false); // throttled
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.Is<WaitlistMailJob>(j => j.Email == "mixed@example.com"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 
-        // Act
+    /// <summary>
+    /// The masking is only as good as its uniformity: an address on the list and one that is not
+    /// must produce the same response and the same amount of work. The handler never looks the
+    /// address up, so this holds by construction — this test pins that it stays that way.
+    /// </summary>
+    [Fact]
+    public async Task Handle_TreatsEveryAddressIdentically()
+    {
+        var onList = await _handler.Handle(
+            new RequestWaitlistCancellationCommand("known@example.com"), CancellationToken.None);
+        var notOnList = await _handler.Handle(
+            new RequestWaitlistCancellationCommand("unknown@example.com"), CancellationToken.None);
+
+        Assert.Equal(onList.IsSuccess, notOnList.IsSuccess);
+        Assert.Equal(onList.Value!.Message, notOnList.Value!.Message);
+
+        _mockQueue.Verify(q => q.EnqueueAsync(
+            It.IsAny<WaitlistMailJob>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    /// <summary>
+    /// A queue outage must not become an oracle of its own by making this endpoint fail where it
+    /// would otherwise succeed.
+    /// </summary>
+    [Fact]
+    public async Task Handle_WhenQueueingFails_StillReturnsTheMaskedResponse()
+    {
+        _mockQueue
+            .Setup(q => q.EnqueueAsync(It.IsAny<WaitlistMailJob>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("redis down"));
+
         var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
+            new RequestWaitlistCancellationCommand("someone@example.com"), CancellationToken.None);
 
-        // Assert: same masked success, but no token generated and no email sent.
         Assert.True(result.IsSuccess);
         Assert.Equal(GenericMessage, result.Value!.Message);
-
-        _mockTokenService.Verify(
-            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
-            Times.Never);
-        _mockEmailService.Verify(
-            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WithNonExistentEntry_ReturnsGenericSuccessAndDoesNotSendEmail()
-    {
-        // Arrange
-        var email = "missing@example.com";
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WaitlistEntity?)null);
-
-        // Act
-        var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        Assert.Equal(GenericMessage, result.Value!.Message);
-
-        _mockTokenService.Verify(
-            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
-            Times.Never);
-        _mockEmailService.Verify(
-            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WithAlreadyCancelledEntry_ReturnsGenericSuccessAndDoesNotSendEmail()
-    {
-        // Arrange
-        var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null);
-        entry.MarkCancelled();
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-
-        // Act
-        var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        Assert.Equal(WaitlistStatus.Cancelled, entry.Status);
-
-        _mockTokenService.Verify(
-            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
-            Times.Never);
-        _mockEmailService.Verify(
-            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WithPromotedEntry_ReturnsGenericSuccessAndDoesNotSendEmail()
-    {
-        // Arrange
-        var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null);
-        entry.MarkPromoted(Guid.NewGuid());
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-
-        // Act
-        var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        Assert.Equal(WaitlistStatus.Promoted, entry.Status);
-
-        _mockTokenService.Verify(
-            s => s.GenerateToken(It.IsAny<Guid>(), It.IsAny<string>()),
-            Times.Never);
-        _mockEmailService.Verify(
-            es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task Handle_WhenEmailServiceFails_ReturnsGenericSuccess()
-    {
-        // Arrange
-        var email = "test@example.com";
-        var entry = WaitlistEntity.Create(email, null);
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(email, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-        _mockEmailService
-            .Setup(es => es.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ThrowsAsync(new InvalidOperationException("SMTP unavailable"));
-
-        // Act
-        var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(email),
-            CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        Assert.Equal(GenericMessage, result.Value!.Message);
-    }
-
-    [Fact]
-    public async Task Handle_NormalizesEmailBeforeLookupAndTokenGeneration()
-    {
-        // Arrange
-        var lowerEmail = "test@example.com";
-        var mixedCaseEmail = " Test@Example.Com ";
-        var entry = WaitlistEntity.Create(lowerEmail, null);
-
-        _mockWaitlistRepo.Setup(r => r.FindByEmail(lowerEmail, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(entry);
-
-        // Act
-        var result = await _handler.Handle(
-            new RequestWaitlistCancellationCommand(mixedCaseEmail),
-            CancellationToken.None);
-
-        // Assert
-        Assert.True(result.IsSuccess);
-        _mockWaitlistRepo.Verify(r => r.FindByEmail(lowerEmail, It.IsAny<CancellationToken>()), Times.Once);
-        _mockTokenService.Verify(s => s.GenerateToken(entry.Id, lowerEmail), Times.Once);
     }
 }

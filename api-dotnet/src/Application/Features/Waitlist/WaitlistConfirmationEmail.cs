@@ -1,3 +1,4 @@
+using Application.Common.Email;
 namespace Application.Features.Waitlist;
 
 /// <summary>
@@ -10,9 +11,9 @@ internal static class WaitlistConfirmationEmail
     public const string Subject = "Confirm Your Email - Vulnwatch Waitlist";
 
     public static string BuildBody(
-        WaitlistEmailBranding branding,
+        VulnwatchEmailBranding branding,
         string confirmLink,
-        string cancellationLink) => WaitlistEmailLayout.Render(
+        string cancellationLink) => VulnwatchEmailLayout.Render(
         branding,
         title: "You're almost in",
         preheader: "Verify your email address to secure your Vulnwatch waitlist spot.",
@@ -22,13 +23,13 @@ internal static class WaitlistConfirmationEmail
         // an action from the recipient.
         mascot: "vulnwatch-mascot-envelope.png",
         bodyHtml:
-            WaitlistEmailLayout.Paragraph("Thanks for joining the Vulnwatch waitlist.") +
-            WaitlistEmailLayout.Paragraph(
+            VulnwatchEmailLayout.Paragraph("Thanks for joining the Vulnwatch waitlist.") +
+            VulnwatchEmailLayout.Paragraph(
                 "We need you to verify your email address to secure your spot and start protecting " +
                 "what matters.", last: true),
         buttonLabel: "Verify my email",
         buttonUrl: confirmLink,
-        infoCard: WaitlistEmailLayout.InfoCard(
+        infoCard: VulnwatchEmailLayout.InfoCard(
             branding,
             "Why verify?",
             "Verifying your email helps us keep your account secure and ensures you receive " +

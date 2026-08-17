@@ -51,12 +51,15 @@ public class DomainJobProcessor implements JobProcessor {
         Set<SurfaceType> requested = surfaceTypeMapper.resolve(job);
         List<SurfaceType> targetSurfaces = scanOrchestrator.primeScanContext(scanId, requested);
 
-        // 2. Pass the exact filtered list straight into the state machine
-        stateMachine.start(scanId, targetSurfaces);
+        // 2. Pass the exact filtered list straight into the state machine.
+        // Pass the full job (not just scanId) so the RUNNING transition can be
+        // published with enough context (requestedBy) for the API to route it
+        // to the right user over SignalR.
+        stateMachine.start(job, targetSurfaces);
 
         try {
             executeScanPipeline(job);
-            stateMachine.advance(scanId);
+            stateMachine.advance(job);
             checkpointManager.clear(scanId);
         } catch (Exception e) {
             handlePipelineFailure(job, e);
@@ -111,7 +114,7 @@ public class DomainJobProcessor implements JobProcessor {
 
     private void handlePipelineFailure(ScanJob job, Exception e) {
         log.error("Domain scan failed [scanId={}]", job.scanId(), e);
-        stateMachine.fail(job.scanId());
+        stateMachine.fail(job);
         publisher.publishFailure(job, e.getMessage());
         checkpointManager.clear(job.scanId());
     }

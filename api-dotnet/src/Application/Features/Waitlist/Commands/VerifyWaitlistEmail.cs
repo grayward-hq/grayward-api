@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -138,7 +139,7 @@ public class VerifyWaitlistEmailHandler : IRequestHandler<VerifyWaitlistEmailCom
         string email, long position, int totalConfirmed, string referralLink)
     {
         var body = WaitlistConfirmedEmail.BuildBody(
-            WaitlistEmailBranding.From(_config), position, totalConfirmed, referralLink);
+            VulnwatchEmailBranding.From(_config), position, totalConfirmed, referralLink);
         await _emailService.SendAsync(email, WaitlistConfirmedEmail.Subject, body);
     }
 

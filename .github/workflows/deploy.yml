@@ -21,12 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Keeps the token out of .git/config, where later steps could read it.
           persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -36,7 +36,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -72,7 +72,7 @@ jobs:
       # rather than through a job-level env block, which would have exposed them
       # to every step in the job.
       - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -122,11 +122,23 @@ jobs:
               fi
             fi
 
-            # ── Pull latest code ──────────────────────────────────────────
-            echo "Pulling latest code from $BRANCH..."
+            # ── Check out the exact commit that was scanned ───────────────
+            # Previously this pulled the branch tip, which is not necessarily the
+            # commit trivy-scan just approved: anything merged between the scan and
+            # the deploy shipped unscanned. Checking out the merge commit for this
+            # run closes that window and makes the deploy reproducible — re-running
+            # it deploys the same code rather than whatever has landed since.
+            DEPLOY_SHA="${{ github.event.pull_request.merge_commit_sha || github.sha }}"
+            echo "Deploying $DEPLOY_SHA on $BRANCH..."
             cd "$DEPLOY_DIR"
-            git reset --hard HEAD
-            git pull origin "$BRANCH"
+            git fetch origin "$BRANCH"
+
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Commit $DEPLOY_SHA not found after fetching $BRANCH. Aborting before anything is overwritten."
+              exit 1
+            fi
+
+            git reset --hard "$DEPLOY_SHA"
 
             # ── Symlink env files and start script ────────────────────────
             echo "Linking start.sh..."
@@ -256,24 +268,26 @@ jobs:
             echo "Starting $WORKER_NAME..."
             pm2 start "java --enable-preview -jar $DEPLOY_DIR/worker-java/target/*.jar" --name "$WORKER_NAME"
 
-            # ── Health check (production only) ────────────────────────────
-            if [ "$BRANCH" = "main" ]; then
-              echo "Running health check..."
-              HEALTHY=false
-              for i in 1 2 3 4 5; do
-                sleep 3
-                STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health)
-                if [ "$STATUS" = "200" ]; then
-                  HEALTHY=true
-                  echo "Health check passed on attempt $i (HTTP $STATUS)"
-                  break
-                else
-                  echo "Attempt $i: HTTP $STATUS, retrying..."
-                fi
-              done
+            # ── Health check ──────────────────────────────────────────────
+            echo "Running health check..."
+            HEALTHY=false
+            for i in $(seq 1 15); do
+              sleep 3
+              STATUS=$(curl -s --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health || echo "000")
+              if [ "$STATUS" = "200" ]; then
+                HEALTHY=true
+                echo "Health check passed on attempt $i (HTTP $STATUS)"
+                break
+              else
+                echo "Attempt $i: HTTP $STATUS, retrying..."
+              fi
+            done
 
-              if [ "$HEALTHY" = "false" ]; then
-                echo "Health check failed. Rolling back..."
+            if [ "$HEALTHY" = "false" ]; then
+              echo "Health check failed."
+
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back production..."
 
                 pm2 delete $API_NAME || true
                 pm2 delete $WORKER_NAME || true
@@ -296,9 +310,13 @@ jobs:
                 rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
                 echo "Rollback successful. Services are running on previous version."
                 exit 1
+              else
+                echo "WARNING: Staging health check failed. Deploy completed but the API may not be healthy."
               fi
+            fi
 
-              # ── Cleanup backups after successful deploy ───────────────────
+            # ── Cleanup backups after successful deploy (production only) ─
+            if [ "$BRANCH" = "main" ]; then
               if [ -d "$PUBLISH_BACKUP" ]; then
                 echo "Cleaning up .NET backup..."
                 rm -rf "$PUBLISH_BACKUP"

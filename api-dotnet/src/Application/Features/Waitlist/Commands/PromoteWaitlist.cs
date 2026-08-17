@@ -1,3 +1,4 @@
+using Application.Common.Email;
 using Application.Features.Waitlist.DTOs;
 using Application.Interfaces;
 using Domain.Common;
@@ -172,58 +173,7 @@ public class PromoteWaitlistHandler : IRequestHandler<PromoteWaitlistCommand, Re
 
     private async Task SendInvitationEmail(string email, string resetLink)
     {
-        var body = BuildInvitationEmailBody(email, resetLink);
-        await _emailService.SendAsync(email, "Welcome to Vulnwatch - Set Your Password", body);
-    }
-
-    private string BuildInvitationEmailBody(string email, string resetLink)
-    {
-        return $@"
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <title>Welcome to Vulnwatch</title>
-    </head>
-    <body style='font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;'>
-        <div style='max-width: 600px; margin: auto; background: #ffffff; padding: 30px; border-radius: 8px;'>
-            <h2 style='color: #333;'>🎉 Welcome to Vulnwatch!</h2>
-
-            <p style='font-size: 16px; color: #555;'>
-                Congratulations! Your waitlist spot has been activated. Your account is now ready to use.
-            </p>
-
-            <p style='font-size: 16px; color: #555;'>
-                Click the link below to set your password and log in:
-            </p>
-
-            <div style='text-align: center; margin: 30px 0;'>
-                <a href='{resetLink}' 
-                   style='background-color: #4CAF50; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;'>
-                    Set Password & Log In
-                </a>
-            </div>
-
-            <p style='font-size: 14px; color: #999;'>
-                Or paste this link in your browser:<br>
-                <code style='background-color: #f0f0f0; padding: 5px; display: inline-block;'>{resetLink}</code>
-            </p>
-
-            <p style='font-size: 16px; color: #555;'>
-                You can now:
-            </p>
-            <ul style='font-size: 14px; color: #555;'>
-                <li>Register your domains</li>
-                <li>Verify domain ownership</li>
-                <li>Run security scans</li>
-                <li>View detailed security reports</li>
-            </ul>
-
-            <p style='font-size: 12px; color: #999; margin-top: 40px;'>
-                This link expires in 24 hours. If you didn't request this, you can ignore this email.
-            </p>
-        </div>
-    </body>
-    </html>";
+        var body = WaitlistInvitationEmail.BuildBody(VulnwatchEmailBranding.From(_config), resetLink);
+        await _emailService.SendAsync(email, WaitlistInvitationEmail.Subject, body);
     }
 }
