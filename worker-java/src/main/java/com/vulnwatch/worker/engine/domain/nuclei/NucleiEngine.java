@@ -51,10 +51,13 @@ public class NucleiEngine implements Scanner {
                 binary,
                 "-u", domainName,
                 "-t", "http/misconfiguration/http-missing-security-headers.yaml",
+                "-timeout", "10",
+                "-retries", "1",
                 "-jsonl",
                 "-silent",
                 "-omit-raw",
                 "-no-color",
+                "-duc",
                 "-o", outputFileName
         ));
 

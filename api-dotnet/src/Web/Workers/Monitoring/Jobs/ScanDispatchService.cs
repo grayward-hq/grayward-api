@@ -9,6 +9,7 @@ namespace Web.Workers.Monitoring;
 public sealed class ScanDispatchService(
     IScanRepository scanRepo,
     IRedisService redis,
+    IScanJobFactory scanJobFactory,
     ILogger<ScanDispatchService> logger)
 {
     public async Task<bool> DispatchAsync(
@@ -42,14 +43,9 @@ public sealed class ScanDispatchService(
 
         try
         {
-            await redis.PublishScanJob("scan-jobs", new ScanJob(
-                domainId,
-                domainName,
-                scan.Id,
-                ScanTargetType.Domain.ToString(),
-                scan.SurfaceTypes.ToString(),
-                settings.Domain.UserId,
-                scan.CreatedAt), ct);
+            var scanJob = scanJobFactory.Create(scan);
+
+            await redis.PublishScanJob("scan-jobs", scanJob, ct);
         }
         catch (Exception ex)
         {

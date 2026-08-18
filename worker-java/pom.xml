@@ -18,12 +18,54 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Security Pin Overrides -->
+        <spring-data-commons.version>3.5.12</spring-data-commons.version>
+        <spring-framework.version>6.2.19</spring-framework.version>
+
         <netty.version>4.2.15.Final</netty.version>
-        <postgresql.version>42.7.11</postgresql.version>
+        <postgresql.version>42.7.13</postgresql.version>
+        <jackson-bom.version>2.22.1</jackson-bom.version>
+        <micrometer.version>1.15.12</micrometer.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Pin Spring Framework modules to patch CVE-2026-41850 & CVE-2026-41842 -->
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-webflux</artifactId>
+                <version>${spring-framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-expression</artifactId>
+                <version>${spring-framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-core</artifactId>
+                <version>${spring-framework.version}</version>
+            </dependency>
+
+            <!-- Pin Spring Data Commons to patch CVE-2026-41695 -->
+            <dependency>
+                <groupId>org.springframework.data</groupId>
+                <artifactId>spring-data-commons</artifactId>
+                <version>${spring-data-commons.version}</version>
+            </dependency>
+
+            <!-- Imported first so its jackson-core / jackson-annotations / jackson-databind
+                 entries take precedence over the versions pulled in by spring-boot-dependencies
+                 below (Maven resolves BOM conflicts on a first-declared-wins basis). This keeps
+                 all three Jackson core modules in lockstep at 2.22.1, matching the existing
+                 jackson-databind pin used by the direct dependency further down in this file. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>io.modelcontextprotocol.sdk</groupId>
                 <artifactId>mcp-core</artifactId>
@@ -33,6 +75,18 @@
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
                 <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Pin Micrometer to patch CVE-2026-40983 & CVE-2026-40984 (DoS via crafted gRPC/HTTP
+                 requests). Declared before spring-boot-dependencies for the same first-declared-wins
+                 reason as the Jackson BOM above: the ${micrometer.version} property alone would not
+                 do it, because an imported BOM resolves its own properties at import time and is
+                 unaffected by an override in this POM. -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-bom</artifactId>
+                <version>${micrometer.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -83,6 +137,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <version>2.22.1</version>
         </dependency>
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
@@ -174,6 +229,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.vaadin.external.google</groupId>
+                    <artifactId>android-json</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>

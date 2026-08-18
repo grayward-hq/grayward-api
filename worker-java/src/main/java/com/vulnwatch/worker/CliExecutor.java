@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 
 /**
@@ -40,6 +41,31 @@ public final class CliExecutor {
     public void run(List<String> command,
                     int timeoutSeconds,
                     boolean allowNonZeroExit) throws Exception {
+        run(command, Map.of(), timeoutSeconds, allowNonZeroExit);
+    }
+
+    /**
+     * Overload that additionally injects environment variables into the
+     * child process — used for passing secrets (e.g. {@code GITHUB_TOKEN})
+     * that must never appear as plaintext CLI arguments or in logs.
+     *
+     * @param command         the command + arguments
+     * @param envVars         extra environment variables merged on top of the
+     *                        inherited environment (values here take priority
+     *                        on key collision); never logged
+     * @param timeoutSeconds  hard wall-clock limit
+     * @param allowNonZeroExit if true, a non-zero exit code is logged as a
+     *                         warning but does not throw; callers should still
+     *                         check whether the output file was written
+     * @throws CliTimeoutException  if the process does not finish in time
+     * @throws CliExecutionException if the process exits non-zero and
+     *                               {@code allowNonZeroExit} is false, or if
+     *                               the OS fails to start the process
+     */
+    public void run(List<String> command,
+                    Map<String, String> envVars,
+                    int timeoutSeconds,
+                    boolean allowNonZeroExit) throws Exception {
 
         log.debug("Executing: {}", String.join(" ", command));
 
@@ -47,6 +73,10 @@ public final class CliExecutor {
 
         // IMPORTANT: don't override PATH unless you must
         pb.environment().put("PATH", System.getenv("PATH"));
+
+        if (envVars != null && !envVars.isEmpty()) {
+            pb.environment().putAll(envVars);
+        }
 
         pb.redirectErrorStream(true);
 
@@ -56,7 +86,7 @@ public final class CliExecutor {
 
         } catch (IOException e) {
             throw new CliExecutionException(
-                    "Failed to start process: " + command.getFirst(), e);
+                    "Failed to start process: %s".formatted(command.getFirst()), e);
         }
 
         StringBuilder output = new StringBuilder();
@@ -92,7 +122,7 @@ public final class CliExecutor {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new CliExecutionException(
-                    "Interrupted while waiting for: " + command.getFirst(), e);
+                    "Interrupted while waiting for: %s".formatted(command.getFirst()), e);
         }
 
         String std = output.toString();
@@ -154,4 +184,3 @@ public final class CliExecutor {
         public CliExecutionException(String message, Throwable cause) { super(message, cause); }
     }
 }
-

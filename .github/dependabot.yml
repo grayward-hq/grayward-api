@@ -1,0 +1,27 @@
+version: 2
+
+# Actions are pinned to commit SHAs so an upstream change cannot land in CI — and in the
+# deploy gate — without review. That trades a supply-chain risk for a staleness risk: a pinned
+# action never picks up its own security fixes. Dependabot closes that gap by opening PRs when
+# the pinned SHA falls behind, so the pins stay current without anyone tracking them by hand.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    # CI-only actions arrive as one PR: a bad bump fails a check, so the workflows
+    # themselves are the review, and four separate PRs a week is noise.
+    #
+    # appleboy/ssh-action is excluded on purpose and keeps getting its own PR. It runs
+    # only during a deploy, so no check can validate a bump before it ships — the first
+    # time you learn a version is bad is mid-deploy. Grouping it with the self-validating
+    # actions would mean approving an unverifiable change to reach verifiable ones.
+    groups:
+      ci-actions:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "appleboy/ssh-action"

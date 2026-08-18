@@ -1,9 +1,16 @@
 /public
+.vs/
+.vscode/
 .idea/
 *.iml
 .DS_Store
 dsa-practice/
 branch_structure.json
 
-.vscode/
 public/fonts/
+
+# Claude Code local settings
+.claude/
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore

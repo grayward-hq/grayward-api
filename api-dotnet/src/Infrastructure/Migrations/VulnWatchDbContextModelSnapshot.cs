@@ -17,6 +17,7 @@ namespace Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasAnnotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-primary,und-u-ks-primary,icu,False")
                 .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -378,6 +379,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CloneUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -389,14 +394,22 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<long>("GitHubInstallationId")
-                        .HasColumnType("bigint");
+                    b.Property<string>("InstallationId")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                    b.Property<bool>("IsMonitoringActive")
+                    b.Property<bool>("IsPrivate")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastScanCompletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long>("RepoId")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -406,11 +419,11 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RepoId")
-                        .IsUnique();
-
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_MonitoredRepositories_UserId");
+
+                    b.HasIndex("UserId", "RepoId")
+                        .IsUnique();
 
                     b.ToTable("MonitoredRepositories");
                 });
@@ -583,6 +596,56 @@ namespace Infrastructure.Migrations
                     b.ToTable("Remediations");
                 });
 
+            modelBuilder.Entity("Domain.Entities.RepositorySetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AlertChannels")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("EventScanEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastScanAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextScanDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("PeriodicScanEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PeriodicScanFrequency")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RepositoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Triggers")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RepositoryId")
+                        .IsUnique();
+
+                    b.ToTable("RepositorySettings");
+                });
+
             modelBuilder.Entity("Domain.Entities.Scan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -705,6 +768,48 @@ namespace Infrastructure.Migrations
                     b.ToTable("Domains");
                 });
 
+            modelBuilder.Entity("Domain.Entities.Subscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CurrentPeriodEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CurrentPeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentPeriodEnd");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Active'");
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("Subscriptions");
+                });
+
             modelBuilder.Entity("Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -800,22 +905,118 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Comments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<string>("CompanyName")
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .UseCollation("case_insensitive");
+
+                    b.Property<string>("EmailConfirmationToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("EmailConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitationToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("JoinOrigin")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("LastReferralAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<long?>("Position")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PromotedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReferralCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .UseCollation("case_insensitive");
+
+                    b.Property<int>("ReferralCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<long>("ReferralPosition")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("ReferredByWaitlistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Pending");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Waitlists");
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Waitlists_CreatedAt");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_Email");
+
+                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("Email"), new[] { "case_insensitive" });
+
+                    b.HasIndex("Position")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_Position");
+
+                    b.HasIndex("PromotedUserId")
+                        .HasDatabaseName("IX_Waitlists_PromotedUserId");
+
+                    b.HasIndex("ReferralCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Waitlists_ReferralCode");
+
+                    NpgsqlIndexBuilderExtensions.UseCollation(b.HasIndex("ReferralCode"), new[] { "case_insensitive" });
+
+                    b.HasIndex("ReferralPosition")
+                        .HasDatabaseName("IX_Waitlists_ReferralPosition");
+
+                    b.HasIndex("ReferredByWaitlistId")
+                        .HasDatabaseName("IX_Waitlists_ReferredByWaitlistId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_Waitlists_Status");
+
+                    b.ToTable("Waitlists", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.WebHookOutBox", b =>
@@ -1116,6 +1317,15 @@ namespace Infrastructure.Migrations
                     b.Navigation("Finding");
                 });
 
+            modelBuilder.Entity("Domain.Entities.RepositorySetting", b =>
+                {
+                    b.HasOne("Domain.Entities.MonitoredRepository", null)
+                        .WithOne("Settings")
+                        .HasForeignKey("Domain.Entities.RepositorySetting", "RepositoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Domain.Entities.Scan", b =>
                 {
                     b.HasOne("Domain.Entities.ScannedDomain", "Domain")
@@ -1150,6 +1360,25 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Subscription", b =>
+                {
+                    b.HasOne("Domain.Entities.User", "User")
+                        .WithMany("Subscriptions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.Entities.Waitlist", b =>
+                {
+                    b.HasOne("Domain.Entities.Waitlist", null)
+                        .WithMany()
+                        .HasForeignKey("ReferredByWaitlistId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
@@ -1206,6 +1435,9 @@ namespace Infrastructure.Migrations
             modelBuilder.Entity("Domain.Entities.MonitoredRepository", b =>
                 {
                     b.Navigation("Scans");
+
+                    b.Navigation("Settings")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Domain.Entities.Scan", b =>
@@ -1220,6 +1452,11 @@ namespace Infrastructure.Migrations
                     b.Navigation("MonitoredEmails");
 
                     b.Navigation("Scans");
+                });
+
+            modelBuilder.Entity("Domain.Entities.User", b =>
+                {
+                    b.Navigation("Subscriptions");
                 });
 #pragma warning restore 612, 618
         }

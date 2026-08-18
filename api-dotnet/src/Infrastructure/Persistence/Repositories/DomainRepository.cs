@@ -103,4 +103,7 @@ public sealed class DomainRepository(VulnWatchDbContext db)
         return (items, totalCount);
     }
 
+    public Task<int> CountUserDomains(Guid userId, CancellationToken ct) =>
+        Db.Domains.CountAsync(r => r.UserId == userId, ct);
+
 }

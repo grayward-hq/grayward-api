@@ -7,16 +7,26 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Least privilege: nothing here writes to the repo. Without this the default token
+# is read/write for the whole repository.
+permissions:
+  contents: read
+
 jobs:
   trivy-scan:
     name: Trivy Security Scan
-    if: github.event.pull_request.merged == true && github.event.repository.fork == false
+    # head.repo.full_name, not repository.fork: the latter describes the repo the
+    # workflow runs in (always false upstream), so it never actually guarded anything.
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Keeps the token out of .git/config, where later steps could read it.
+          persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -26,7 +36,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -38,21 +48,31 @@ jobs:
 
   deploy:
     name: Deploy
-    if: github.event.pull_request.merged == true && github.event.repository.fork == false
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
     needs: [trivy-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
       name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
-    env:
-      HOST: ${{ secrets.HOST }}
-      USERNAME: ${{ secrets.USERNAME }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+    # One deploy at a time per environment. The script stops services, swaps the
+    # publish directory and restarts; two overlapping runs would interleave those
+    # steps on the same server. Queued rather than cancelled so a merge is never
+    # silently skipped.
+    concurrency:
+      group: deploy-${{ github.event.pull_request.base.ref }}
+      cancel-in-progress: false
+    # Overrides the workflow-level contents: read so the failure step below can
+    # open an issue. Scoped to this job rather than the whole workflow.
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
-
+      # No checkout: the build runs on the remote host via ssh, so the runner's
+      # workspace was never used. The secrets are passed to the action directly
+      # rather than through a job-level env block, which would have exposed them
+      # to every step in the job.
       - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -83,29 +103,42 @@ jobs:
             PUBLISH_BACKUP="${PUBLISH_DIR}-backup"
             JAR_BACKUP="${JAR_DIR}-backup"
 
-            # ── Backup current .NET publish output ────────────────────────
-            if [ -d "$PUBLISH_DIR" ] && [ "$(ls -A $PUBLISH_DIR)" ]; then
-              echo "Backing up current .NET publish..."
-              rm -rf "$PUBLISH_BACKUP"
-              cp -r "$PUBLISH_DIR" "$PUBLISH_BACKUP"
-            else
-              echo "No existing .NET publish found. Fresh deploy, no backup created."
+            # ── Backup (production only) ──────────────────────────────────
+            if [ "$BRANCH" = "main" ]; then
+              if [ -d "$PUBLISH_DIR" ] && [ "$(ls -A $PUBLISH_DIR)" ]; then
+                echo "Backing up current .NET publish..."
+                rm -rf "$PUBLISH_BACKUP"
+                cp -r "$PUBLISH_DIR" "$PUBLISH_BACKUP"
+              else
+                echo "No existing .NET publish found. Fresh deploy, no backup created."
+              fi
+
+              if [ -d "$JAR_DIR" ] && [ "$(ls -A $JAR_DIR)" ]; then
+                echo "Backing up current Java JAR..."
+                rm -rf "$JAR_BACKUP"
+                cp -r "$JAR_DIR" "$JAR_BACKUP"
+              else
+                echo "No existing Java JAR found. Fresh deploy, no backup created."
+              fi
             fi
 
-            # ── Backup current Java JAR ───────────────────────────────────
-            if [ -d "$JAR_DIR" ] && [ "$(ls -A $JAR_DIR)" ]; then
-              echo "Backing up current Java JAR..."
-              rm -rf "$JAR_BACKUP"
-              cp -r "$JAR_DIR" "$JAR_BACKUP"
-            else
-              echo "No existing Java JAR found. Fresh deploy, no backup created."
-            fi
-
-            # ── Pull latest code ──────────────────────────────────────────
-            echo "Pulling latest code from $BRANCH..."
+            # ── Check out the exact commit that was scanned ───────────────
+            # Previously this pulled the branch tip, which is not necessarily the
+            # commit trivy-scan just approved: anything merged between the scan and
+            # the deploy shipped unscanned. Checking out the merge commit for this
+            # run closes that window and makes the deploy reproducible — re-running
+            # it deploys the same code rather than whatever has landed since.
+            DEPLOY_SHA="${{ github.event.pull_request.merge_commit_sha || github.sha }}"
+            echo "Deploying $DEPLOY_SHA on $BRANCH..."
             cd "$DEPLOY_DIR"
-            git reset --hard HEAD
-            git pull origin "$BRANCH"
+            git fetch origin "$BRANCH"
+
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Commit $DEPLOY_SHA not found after fetching $BRANCH. Aborting before anything is overwritten."
+              exit 1
+            fi
+
+            git reset --hard "$DEPLOY_SHA"
 
             # ── Symlink env files and start script ────────────────────────
             echo "Linking start.sh..."
@@ -117,53 +150,106 @@ jobs:
             echo "Linking worker application.properties..."
             ln -sfn "$WORKER_ENV" "$DEPLOY_DIR/worker-java/src/main/resources/application.properties"
 
+            # ── Apply database migrations ─────────────────────────────────
+            # Deliberately before the builds. dotnet publish overwrites $PUBLISH_DIR
+            # in place and staging keeps no backup, so migrating after a build would
+            # leave the new binaries on disk if the migration failed — the old code
+            # keeps serving only until the next pm2 or host restart, which then
+            # silently brings up new code against an unmigrated schema. Running
+            # first means a migration failure aborts with nothing overwritten.
+            #
+            # The cost of this order is the reverse case: migrations land, then a
+            # build fails, leaving the schema ahead of the code. That is the safe
+            # direction and the reason migrations must stay expand-compatible —
+            # additive, no destructive changes in the same release as the code that
+            # depends on them.
+            #
+            # The app only self-migrates in Development (Program.cs), so without
+            # this nothing applies them outside a developer's machine — which is how
+            # staging ended up missing AddWaitlistJoinOrigin and 500ing on every
+            # waitlist join.
+            echo "Applying database migrations..."
+
+            export PATH="$PATH:$HOME/.dotnet/tools"
+            if ! command -v dotnet-ef >/dev/null 2>&1; then
+              echo "Installing dotnet-ef..."
+              dotnet tool install --global dotnet-ef || dotnet tool update --global dotnet-ef
+            fi
+
+            # Read the connection string with grep rather than sourcing the env file.
+            # start.sh sources it and chokes on the multi-line PEM around line 56
+            # ("RSA: command not found"), which silently drops every variable after
+            # that point. Pulling out the one line we need avoids that entirely.
+            DB_CONN=$(grep -m1 '^ConnectionStrings__DefaultConnectionString=' "$API_ENV" | cut -d= -f2-)
+            DB_CONN="${DB_CONN%\"}"
+            DB_CONN="${DB_CONN#\"}"
+
+            if [ -z "$DB_CONN" ]; then
+              echo "ConnectionStrings__DefaultConnectionString not found in $API_ENV. Aborting before anything is overwritten."
+              exit 1
+            fi
+
+            if ! ConnectionStrings__DefaultConnectionString="$DB_CONN" dotnet ef database update \
+                 --project "$DEPLOY_DIR/api-dotnet/src/Infrastructure" \
+                 --startup-project "$DEPLOY_DIR/api-dotnet/src/Web" \
+                 --configuration Release; then
+              echo "Database migration failed. Nothing was overwritten; the running services are untouched."
+              exit 1
+            fi
+
+            echo "Migrations applied."
+
             # ── Build .NET API ────────────────────────────────────────────
             echo "Building .NET API..."
             if ! dotnet publish "$DEPLOY_DIR/api-dotnet/src/Web" -c Release -o "$PUBLISH_DIR"; then
-              echo ".NET build failed. Rolling back..."
+              echo ".NET build failed."
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back..."
+                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
+                  rm -rf "$PUBLISH_DIR"
+                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                fi
 
-              if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
-                rm -rf "$PUBLISH_DIR"
-                cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
+                  rm -rf "$JAR_DIR"
+                  cp -r "$JAR_BACKUP" "$JAR_DIR"
+                fi
+
+                pm2 delete $API_NAME || true
+                pm2 delete $WORKER_NAME || true
+                pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
+                pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
+                pm2 save
+                rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
+                echo "Rollback successful."
               fi
-
-              if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
-                rm -rf "$JAR_DIR"
-                cp -r "$JAR_BACKUP" "$JAR_DIR"
-              fi
-
-              pm2 delete $API_NAME || true
-              pm2 delete $WORKER_NAME || true
-              pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
-              pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
-              pm2 save
-              rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
-              echo "Rollback successful."
               exit 1
             fi
 
             # ── Build Java worker ─────────────────────────────────────────
             echo "Building Java worker..."
             if ! (cd "$DEPLOY_DIR/worker-java" && ./mvnw clean package -DskipTests); then
-              echo "Java build failed. Rolling back..."
+              echo "Java build failed."
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back..."
+                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
+                  rm -rf "$PUBLISH_DIR"
+                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                fi
 
-              if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
-                rm -rf "$PUBLISH_DIR"
-                cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
+                  rm -rf "$JAR_DIR"
+                  cp -r "$JAR_BACKUP" "$JAR_DIR"
+                fi
+
+                pm2 delete $API_NAME || true
+                pm2 delete $WORKER_NAME || true
+                pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
+                pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
+                pm2 save
+                rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
+                echo "Rollback successful."
               fi
-
-              if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
-                rm -rf "$JAR_DIR"
-                cp -r "$JAR_BACKUP" "$JAR_DIR"
-              fi
-
-              pm2 delete $API_NAME || true
-              pm2 delete $WORKER_NAME || true
-              pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
-              pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
-              pm2 save
-              rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
-              echo "Rollback successful."
               exit 1
             fi
 
@@ -185,9 +271,9 @@ jobs:
             # ── Health check ──────────────────────────────────────────────
             echo "Running health check..."
             HEALTHY=false
-            for i in 1 2 3 4 5; do
+            for i in $(seq 1 15); do
               sleep 3
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health)
+              STATUS=$(curl -s --connect-timeout 2 --max-time 5 -o /dev/null -w "%{http_code}" http://localhost:$API_PORT/health || echo "000")
               if [ "$STATUS" = "200" ]; then
                 HEALTHY=true
                 echo "Health check passed on attempt $i (HTTP $STATUS)"
@@ -198,42 +284,76 @@ jobs:
             done
 
             if [ "$HEALTHY" = "false" ]; then
-              echo "Health check failed. Rolling back..."
+              echo "Health check failed."
 
-              pm2 delete $API_NAME || true
-              pm2 delete $WORKER_NAME || true
+              if [ "$BRANCH" = "main" ]; then
+                echo "Rolling back production..."
 
-              if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
-                echo "Rolling back .NET API..."
-                rm -rf "$PUBLISH_DIR"
-                cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                pm2 delete $API_NAME || true
+                pm2 delete $WORKER_NAME || true
+
+                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
+                  echo "Rolling back .NET API..."
+                  rm -rf "$PUBLISH_DIR"
+                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
+                fi
+
+                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
+                  echo "Rolling back Java worker..."
+                  rm -rf "$JAR_DIR"
+                  cp -r "$JAR_BACKUP" "$JAR_DIR"
+                fi
+
+                pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
+                pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
+                pm2 save
+                rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
+                echo "Rollback successful. Services are running on previous version."
+                exit 1
+              else
+                echo "WARNING: Staging health check failed. Deploy completed but the API may not be healthy."
               fi
-
-              if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
-                echo "Rolling back Java worker..."
-                rm -rf "$JAR_DIR"
-                cp -r "$JAR_BACKUP" "$JAR_DIR"
-              fi
-
-              pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
-              pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
-              pm2 save
-              rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
-              echo "Rollback successful. Services are running on previous version."
-              exit 1
             fi
 
-            # ── Cleanup backups after successful deploy ───────────────────
-            if [ -d "$PUBLISH_BACKUP" ]; then
-              echo "Cleaning up .NET backup..."
-              rm -rf "$PUBLISH_BACKUP"
-            fi
+            # ── Cleanup backups after successful deploy (production only) ─
+            if [ "$BRANCH" = "main" ]; then
+              if [ -d "$PUBLISH_BACKUP" ]; then
+                echo "Cleaning up .NET backup..."
+                rm -rf "$PUBLISH_BACKUP"
+              fi
 
-            if [ -d "$JAR_BACKUP" ]; then
-              echo "Cleaning up Java backup..."
-              rm -rf "$JAR_BACKUP"
+              if [ -d "$JAR_BACKUP" ]; then
+                echo "Cleaning up Java backup..."
+                rm -rf "$JAR_BACKUP"
+              fi
             fi
 
             echo "Deploy successful!"
             pm2 save
             pm2 list
+
+      # A failed deploy used to be silent. deploy.yml was invalid from 2026-07-07
+      # and every run failed in 0s for five weeks with nobody notified, while
+      # merged PRs appeared to ship. This opens an issue so the next outage is
+      # visible the same day. No external secrets needed — it uses GITHUB_TOKEN.
+      - name: Open an issue if the deploy failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ github.event.pull_request.base.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Deploy to $TARGET failed" \
+            --body "The deploy for $PR_URL did not complete, so **$TARGET is still running the previous build**.
+
+          Run: $RUN_URL
+
+          Check in this order:
+          1. Did the .NET or Java build fail? The script exits before touching services, so the old build is still serving.
+          2. Did \`dotnet ef database update\` fail? Same — services untouched, but code and schema are now out of step.
+          3. Did the health check fail on production? It rolls back automatically; confirm the rollback landed.
+
+          Do not merge further promotions to $TARGET until this is resolved." || true

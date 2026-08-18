@@ -5,6 +5,9 @@ using Application.Features.Scans;
 using Domain.Entities;
 using Domain.Enums;
 using Application.Features.BreachMonitoring.DTOs;
+using Application.Features.Integrations.GitHub.DTOs;
+using Application.Features.Repository.DTOs;
+using Application.Features.Repository;
 
 namespace Application.Interfaces;
 
@@ -29,15 +32,6 @@ public interface IAlertRepository : IRepository<Alert>
     void DetachUnsavedAlerts();
 }
 
-public interface IRefreshTokenRepository : IRepository<RefreshToken>
-{
-    Task<RefreshToken?> GetById(Guid id, CancellationToken ct = default);
-    Task<RefreshToken?> GetByToken(string rawToken, CancellationToken ct = default);
-    Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct = default);
-    Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct = default);  
-
-}
-
 public interface IBrandThreatRepository : IRepository<BrandThreat>
 {
 
@@ -56,7 +50,7 @@ public interface IBrandThreatRepository : IRepository<BrandThreat>
     int pageSize,
     CancellationToken ct);
 
-Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
+    Task<BrandThreatSummary> GetSummaryByDomain(Guid domainId, CancellationToken ct);
 }
 
 public interface IDomainRepository : IRepository<ScannedDomain>
@@ -71,6 +65,7 @@ public interface IDomainRepository : IRepository<ScannedDomain>
     Task<ScannedDomain?> FindPendingById(Guid domainId, Guid userId, CancellationToken ct);
     public Task<ScannedDomain?> GetByNameAndUser(string domainName, Guid userId, CancellationToken ct);
     Task<(IReadOnlyList<ScannedDomain>, int)> GetPaged(DomainFilter q, CancellationToken ct = default);
+    Task<int> CountUserDomains(Guid userId, CancellationToken ct);
 }
 
 public interface IDomainSettingsRepository
@@ -86,9 +81,29 @@ public interface IDomainSettingsRepository
     Task<bool> ExistsForDomain(Guid domainId, CancellationToken ct);
 }
 
+public interface IFindingRepository
+    : IRepository<Finding>
+{
+    Task<List<VulnerabilityListItemDto>> GetByScanId(Guid scanId, CancellationToken ct);
+    Task<List<TrendRowDto>> GetTrendRowsByRepository(
+    Guid repositoryId,
+    DateTime since,
+    CancellationToken ct);
+}
+
 public interface IIntegrationRepository : IRepository<Integration>
 {
     Task<Integration?> GetByUserAndProvider(Guid userId, IntegrationProvider provider, CancellationToken ct);
+    Task<Integration?> GetByInstallationIdAndProvider(string installationId, IntegrationProvider provider, CancellationToken ct);
+}
+
+public interface IMonitoredRepoRepository : IRepository<MonitoredRepository>
+{
+    Task<int> CountUserRepositories(Guid userId, CancellationToken ct);
+    Task<List<MonitoredRepository>> GetByUserId(Guid userId, CancellationToken ct);
+    Task<MonitoredRepository?> GetUserRepoByRepoId(Guid userId, Guid repositoryId, CancellationToken ct);
+    Task<List<MonitoredRepository>> GetByInstallationId(string installationId, CancellationToken ct);
+    Task<(IReadOnlyList<MonitoredRepository>, int)> GetPaged(RepoFilter q, CancellationToken ct = default);
 }
 
 public interface IMonitoredEmailRepository : IRepository<MonitoredEmail>
@@ -113,16 +128,70 @@ public interface INotificationPreferencesRepository : IRepository<NotificationPr
     Task<NotificationPreferences?> GetByUserId(Guid userId, CancellationToken ct);
 }
 
+public interface IRefreshTokenRepository : IRepository<RefreshToken>
+{
+    Task<RefreshToken?> GetById(Guid id, CancellationToken ct = default);
+    Task<RefreshToken?> GetByToken(string rawToken, CancellationToken ct = default);
+    Task<List<RefreshToken>> GetActiveByUserId(Guid userId, CancellationToken ct = default);
+    Task<RefreshToken?> GetActiveById(Guid id, Guid userId, CancellationToken ct = default);  
+
+}
+
 public interface IScanRepository : IRepository<Scan>
 {
     Task<Scan?> FindLatestCompletedByDomain(Guid domainId, CancellationToken ct);
+    Task<Scan?> FindLatestForRepository(Guid repositoryId, CancellationToken ct);
+    Task<Scan?> FindLatestCompletedForRepository(Guid repositoryId, CancellationToken ct);
     Task<Scan?> FindByIdWithFindings(Guid scanId, CancellationToken ct);
     Task<Scan?> FindRunningByDomain(Guid domainId, CancellationToken ct);
+    Task<Scan?> FindRunningByRepoId(Guid repoId, CancellationToken ct);  
     Task<Scan?> FindByIdempotencyKey(Guid key, CancellationToken ct);
     Task<List<ScanScoreDto>> GetRecentCompletedScans(
         Guid userId,
         DateTime daysAgo,
         CancellationToken ct);
     Task<(List<Scan> Items, int TotalCount)> GetPaged(ScanFilter filter, CancellationToken ct);
+    Task<int> CountUserDomainScansInPeriod(Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+    Task<int> CountUserActiveDomainScans(Guid userId, CancellationToken ct);
+    Task<int> CountUserRepositoryScansInPeriod(Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+    Task<int> CountUserActiveRepositoryScans(Guid userId, CancellationToken ct);
 }
 
+public interface ISubscriptionRepository : IRepository<Subscription>
+{
+    Task<Subscription?> GetActiveByUserForUpdate(Guid userId, CancellationToken ct);
+    Task<Subscription?> GetActiveByUser(Guid userId, CancellationToken ct);
+}
+
+public interface IWaitlistRepository : IRepository<Waitlist>
+{
+    // Queries
+    Task<Waitlist?> FindByEmail(string email, CancellationToken ct);
+    Task<Waitlist?> FindByReferralCode(string referralCode, CancellationToken ct);
+    Task<Waitlist?> FindByPromotedUserId(Guid userId, CancellationToken ct);
+    Task<Waitlist?> GetById(Guid id, CancellationToken ct);
+    Task<long> GetNextPosition(CancellationToken ct);
+    Task<long> GetLivePosition(long sequence, CancellationToken ct);
+    Task<long> GetPositionByEmail(string email, CancellationToken ct);
+    Task<int> GetTotalCount(CancellationToken ct);
+    Task<(List<Waitlist> Items, int TotalCount)> GetPaged(
+        WaitlistStatus? status,
+        int page,
+        int pageSize,
+        string? searchEmail,
+        string sortBy,
+        string sortOrder,
+        CancellationToken ct);
+
+    // Analytics
+    Task<int> CountByStatus(WaitlistStatus status, CancellationToken ct);
+    Task<int> CountCreatedSince(DateTime since, CancellationToken ct);
+    Task<int> CountPromotedSince(DateTime since, CancellationToken ct);
+    Task<double> GetAverageDaysToPromotion(CancellationToken ct);
+    Task<List<(string Company, int Count)>> GetTopCompanies(CancellationToken ct, int limit = 10);
+
+    // Utility
+    Task<bool> ExistsByEmail(string email, CancellationToken ct);
+    Task<bool> ExistsByPromotedUserId(Guid userId, CancellationToken ct);
+    Task<bool> ApplyReferralBump(Guid waitlistId, CancellationToken ct);
+}
