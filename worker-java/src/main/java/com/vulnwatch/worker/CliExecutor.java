@@ -1,6 +1,8 @@
 package com.vulnwatch.worker;
 
-
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -16,7 +18,13 @@ import java.util.Map;
 import java.util.concurrent.*;
 
 /**
- *
+ * Every {@code run} call is gated by a per-tool Resilience4j {@link Bulkhead}
+ * (see {@code resilience4j.bulkhead.instances.<toolName>.*} in
+ * application.properties). This caps how many instances of a given CLI tool
+ * (nmap, nuclei, trivy, testssl, subfinder, dnsrecon) can run concurrently
+ * across the whole worker, regardless of how many ScanJobs or surfaces are
+ * in flight — the second, defense-in-depth layer of rate limiting alongside
+ * the job-level bulkheads in QueueListener.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -24,24 +32,32 @@ import java.util.concurrent.*;
 public final class CliExecutor {
 
     private final ExecutorService executor;
+    private final BulkheadRegistry bulkheadRegistry;
 
     /**
      * Runs a command and waits up to {@code timeoutSeconds} for it to finish.
+     * Blocks until a concurrency slot for {@code toolName} is free (bounded by
+     * that tool's {@code max-wait-duration}) before starting the process.
      *
      * @param command         the command + arguments
      * @param timeoutSeconds  hard wall-clock limit
      * @param allowNonZeroExit if true, a non-zero exit code is logged as a
      *                         warning but does not throw; callers should still
      *                         check whether the output file was written
+     * @param toolName        bulkhead name — matches a
+     *                        {@code resilience4j.bulkhead.instances.<toolName>}
+     *                        config block, e.g. "nmap", "trivy", "subfinder"
      * @throws CliTimeoutException  if the process does not finish in time
      * @throws CliExecutionException if the process exits non-zero and
      *                               {@code allowNonZeroExit} is false, or if
-     *                               the OS fails to start the process
+     *                               the OS fails to start the process, or if
+     *                               no concurrency slot freed up in time
      */
     public void run(List<String> command,
                     int timeoutSeconds,
-                    boolean allowNonZeroExit) throws Exception {
-        run(command, Map.of(), timeoutSeconds, allowNonZeroExit);
+                    boolean allowNonZeroExit,
+                    String toolName) throws Exception {
+        run(command, Map.of(), timeoutSeconds, allowNonZeroExit, toolName);
     }
 
     /**
@@ -57,15 +73,42 @@ public final class CliExecutor {
      * @param allowNonZeroExit if true, a non-zero exit code is logged as a
      *                         warning but does not throw; callers should still
      *                         check whether the output file was written
+     * @param toolName        bulkhead name — matches a
+     *                        {@code resilience4j.bulkhead.instances.<toolName>}
+     *                        config block, e.g. "nmap", "trivy", "subfinder"
      * @throws CliTimeoutException  if the process does not finish in time
      * @throws CliExecutionException if the process exits non-zero and
      *                               {@code allowNonZeroExit} is false, or if
-     *                               the OS fails to start the process
+     *                               the OS fails to start the process, or if
+     *                               no concurrency slot freed up in time
      */
     public void run(List<String> command,
                     Map<String, String> envVars,
                     int timeoutSeconds,
-                    boolean allowNonZeroExit) throws Exception {
+                    boolean allowNonZeroExit,
+                    String toolName) throws Exception {
+
+        Bulkhead bulkhead = bulkheadRegistry.bulkhead(toolName);
+        try {
+            bulkhead.acquirePermission();
+        } catch (BulkheadFullException e) {
+            throw new CliExecutionException(
+                    "Tool '%s' stayed at max concurrency (%d) too long, rejecting: %s"
+                            .formatted(toolName, bulkhead.getBulkheadConfig().getMaxConcurrentCalls(), command.getFirst()),
+                    e);
+        }
+
+        try {
+            runInternal(command, envVars, timeoutSeconds, allowNonZeroExit);
+        } finally {
+            bulkhead.onComplete();
+        }
+    }
+
+    private void runInternal(List<String> command,
+                             Map<String, String> envVars,
+                             int timeoutSeconds,
+                             boolean allowNonZeroExit) throws Exception {
 
         log.debug("Executing: {}", String.join(" ", command));
 
@@ -83,7 +126,6 @@ public final class CliExecutor {
         Process process;
         try {
             process = pb.start();
-
         } catch (IOException e) {
             throw new CliExecutionException(
                     "Failed to start process: %s".formatted(command.getFirst()), e);
@@ -108,7 +150,7 @@ public final class CliExecutor {
             finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
 
             if (!finished) {
-                process.destroyForcibly();
+                cleanupProcess(process);
                 throw new CliTimeoutException(
                         "Tool timed out after %ds: %s"
                                 .formatted(timeoutSeconds, command.getFirst())
@@ -119,14 +161,15 @@ public final class CliExecutor {
             readerFuture.get();
 
         } catch (InterruptedException | ExecutionException e) {
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
+            cleanupProcess(process);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new CliExecutionException(
                     "Interrupted while waiting for: %s".formatted(command.getFirst()), e);
         }
 
         String std = output.toString();
-
         int exit = process.exitValue();
 
         if (exit != 0) {
@@ -142,23 +185,15 @@ public final class CliExecutor {
     }
 
     /**
-     * Reads the contents of {@code path} as a UTF-8 string, then deletes the
-     * file unconditionally (even if parsing later fails).
-     *
-     * @throws CliExecutionException if the file does not exist or cannot be read
+     * Forcibly destroys a process and blocks until it fully terminates.
+     * Restores the thread's interrupt status if interrupted during cleanup wait.
      */
-    public String readAndDelete(Path path) throws Exception {
+    private void cleanupProcess(Process process) {
+        process.destroyForcibly();
         try {
-            if (!Files.exists(path)) {
-                throw new CliExecutionException(
-                        "Expected output file not found: " + path, null);
-            }
-            String content = Files.readString(path);
-            Files.deleteIfExists(path);
-            return content;
-        } catch (IOException e) {
-            try { Files.deleteIfExists(path); } catch (IOException ignored) {}
-            throw new CliExecutionException("Failed to read tool output: " + path, e);
+            process.waitFor();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 

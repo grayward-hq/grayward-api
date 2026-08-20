@@ -4,8 +4,6 @@ import com.vulnwatch.worker.CliExecutor;
 import com.vulnwatch.worker.engine.domain.Scanner;
 import com.vulnwatch.worker.engine.domain.nuclei.models.NucleiEngineResult;
 import com.vulnwatch.worker.engine.parsers.NucleiParser;
-import com.vulnwatch.worker.engine.parsers.TrivyParser;
-import com.vulnwatch.worker.engine.repository.trivy.models.TrivyEngineResult;
 import com.vulnwatch.worker.enums.SurfaceType;
 import com.vulnwatch.worker.model.EngineResult;
 import com.vulnwatch.worker.model.ScanJob;
@@ -62,7 +60,7 @@ public class NucleiEngine implements Scanner {
         ));
 
         try {
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, timeoutSeconds, false, "nuclei");
             List<NucleiEngineResult> findings = nucleiParser.parse(outFile.toFile());
             return EngineResult.success(SurfaceType.HTTP_HEADERS, Map.of("findings", findings));
         }catch (Exception e){
