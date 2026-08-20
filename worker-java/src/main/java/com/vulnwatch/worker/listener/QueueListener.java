@@ -124,8 +124,12 @@ public class QueueListener implements Runnable {
                             job.scanId(), bulkhead.getName());
                     bulkhead.onComplete();
                     break;
+                } catch (Throwable t) {
+                    log.error("Dispatch failed for job [scanId={}], releasing permit for bulkhead '{}': {}",
+                            job.scanId(), bulkhead.getName(), t.getMessage(), t);
+                    bulkhead.onComplete();
+                    throw t;
                 }
-
             } catch (Exception e) {
                 log.error("Error reading from queue '{}', retrying in 1s: {}", queueName, e.getMessage(), e);
                 backoff();
@@ -221,10 +225,13 @@ public class QueueListener implements Runnable {
             log.trace("Deserializing raw job payload: {}", raw);
             return mapper.readValue(raw, ScanJob.class);
         } catch (Exception e) {
-            log.error("Failed to deserialize job payload, dropping message. Payload: {}, Error: {}",
-                    raw, e.getMessage(), e);
+            log.error("Failed to deserialize job payload, dropping message [length={}]: {}",
+                    raw == null ? 0 : raw.length(), e.getMessage(), e);
+            log.trace("Undeserializable payload: {}", raw);
             return null;
+
         }
+
     }
 
     public void stop() {
