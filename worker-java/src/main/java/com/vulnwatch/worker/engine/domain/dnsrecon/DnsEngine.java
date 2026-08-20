@@ -1,7 +1,5 @@
 package com.vulnwatch.worker.engine.domain.dnsrecon;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnwatch.worker.CliExecutor;
 import com.vulnwatch.worker.engine.domain.Scanner;
 import com.vulnwatch.worker.engine.domain.dnsrecon.model.ScanContext;
@@ -15,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
@@ -58,11 +56,12 @@ public class DnsEngine implements Scanner {
         );
 
         try{
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, timeoutSeconds, false, "dnsrecon");
             ScanContext context = dnsParser.parse(outFile.toFile());
 
             Map<String, Object> findings = ruleEngine.scanJob(context);
             return EngineResult.success(SurfaceType.DNS, findings);
+
 
 
         }catch (IOException e){
