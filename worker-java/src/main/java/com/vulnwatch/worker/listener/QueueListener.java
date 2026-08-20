@@ -94,6 +94,12 @@ public class QueueListener implements Runnable {
                 log.debug("Awaiting bulkhead permit [scanId={} scanType={} bulkhead={}]",
                         job.scanId(), job.scanType(), bulkhead.getName());
 
+                // mark checkpoint before handing to processor
+                // If the worker crashes anywhere after this point, WorkerRunner
+                // will re-queue this job on the next startup.
+                log.debug("Setting checkpoint for job [scanId={}]", job.scanId());
+                checkpointManager.mark(job.scanId(), payload);
+
                 if (!awaitPermit(bulkhead)) {
                     log.info("Interrupted while awaiting permit for job [scanId={} scanType={}]. Worker shutting down.",
                             job.scanId(), job.scanType());
@@ -184,11 +190,6 @@ public class QueueListener implements Runnable {
                 job.scanId(), job.domainId(), job.scanType());
 
         try {
-            // mark checkpoint before handing to processor
-            // If the worker crashes anywhere after this point, WorkerRunner
-            // will re-queue this job on the next startup.
-            log.debug("Setting checkpoint for job [scanId={}]", job.scanId());
-            checkpointManager.mark(job.scanId(), raw);
 
             JobProcessor processor = processors.get(job.scanType());
             if (processor == null) {
