@@ -59,7 +59,7 @@ public class NmapEngine implements Scanner {
         );
 
         try {
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, timeoutSeconds, false, "nmap");
             List<NmapFindings> findings = nmapParser.parse(outFile.toFile());
             return EngineResult.success(SurfaceType.PORTS, Map.of("findings", findings));
         }catch (Exception e){

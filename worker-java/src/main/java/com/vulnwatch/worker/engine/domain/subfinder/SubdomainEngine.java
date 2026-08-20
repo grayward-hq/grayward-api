@@ -54,7 +54,7 @@ public class SubdomainEngine implements Scanner {
         );
 
         try {
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, timeoutSeconds, false, "subfinder");
             List<SubdomainRecord> records = jsonlParser.parse(outFile);
             List<SubdomainFindings> findings = classificationPipeline.process(records);
 

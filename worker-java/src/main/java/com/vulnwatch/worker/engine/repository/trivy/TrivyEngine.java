@@ -64,7 +64,7 @@ public class TrivyEngine {
         log.info("Running Trivy [scanId={} command={}]", scanId, TrivyCommandBuilder.redactForLogging(command));
 
         try {
-            cliExecutor.run(command, env, timeoutSeconds, false);
+            cliExecutor.run(command, env, timeoutSeconds, false, "trivy");
             return trivyParser.parse(outFile.toFile());
         } catch (Exception e) {
             log.error("Trivy execution failed [scanId={} repo={}]: {}", scanId, metadata.fullName(), e.getMessage());

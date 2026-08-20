@@ -62,7 +62,7 @@ public class NucleiEngine implements Scanner {
         ));
 
         try {
-            cliExecutor.run(command, timeoutSeconds, false);
+            cliExecutor.run(command, timeoutSeconds, false, "nuclei");
             List<NucleiEngineResult> findings = nucleiParser.parse(outFile.toFile());
             return EngineResult.success(SurfaceType.HTTP_HEADERS, Map.of("findings", findings));
         }catch (Exception e){
