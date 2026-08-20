@@ -1,6 +1,5 @@
 package com.vulnwatch.worker;
 
-
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
@@ -127,7 +126,6 @@ public final class CliExecutor {
         Process process;
         try {
             process = pb.start();
-
         } catch (IOException e) {
             throw new CliExecutionException(
                     "Failed to start process: %s".formatted(command.getFirst()), e);
@@ -152,7 +150,7 @@ public final class CliExecutor {
             finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
 
             if (!finished) {
-                process.destroyForcibly();
+                cleanupProcess(process);
                 throw new CliTimeoutException(
                         "Tool timed out after %ds: %s"
                                 .formatted(timeoutSeconds, command.getFirst())
@@ -163,14 +161,15 @@ public final class CliExecutor {
             readerFuture.get();
 
         } catch (InterruptedException | ExecutionException e) {
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
+            cleanupProcess(process);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new CliExecutionException(
                     "Interrupted while waiting for: %s".formatted(command.getFirst()), e);
         }
 
         String std = output.toString();
-
         int exit = process.exitValue();
 
         if (exit != 0) {
@@ -186,23 +185,15 @@ public final class CliExecutor {
     }
 
     /**
-     * Reads the contents of {@code path} as a UTF-8 string, then deletes the
-     * file unconditionally (even if parsing later fails).
-     *
-     * @throws CliExecutionException if the file does not exist or cannot be read
+     * Forcibly destroys a process and blocks until it fully terminates.
+     * Restores the thread's interrupt status if interrupted during cleanup wait.
      */
-    public String readAndDelete(Path path) throws Exception {
+    private void cleanupProcess(Process process) {
+        process.destroyForcibly();
         try {
-            if (!Files.exists(path)) {
-                throw new CliExecutionException(
-                        "Expected output file not found: %s".formatted(path), null);
-            }
-            String content = Files.readString(path);
-            Files.deleteIfExists(path);
-            return content;
-        } catch (IOException e) {
-            try { Files.deleteIfExists(path); } catch (IOException ignored) {}
-            throw new CliExecutionException("Failed to read tool output: %s".formatted(path), e);
+            process.waitFor();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 
