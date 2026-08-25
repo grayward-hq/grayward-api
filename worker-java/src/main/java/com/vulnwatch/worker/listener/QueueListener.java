@@ -17,6 +17,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -58,9 +59,16 @@ public class QueueListener implements Runnable {
     @Value("${worker.scan.max-concurrent:4}")
     private int maxConcurrent;
 
-    /** Jobs older than this are discarded on dequeue. Zero or negative disables the check. */
-    @Value("${worker.scan.max-age-hours:24}")
-    private long maxAgeHours;
+    /**
+     * Jobs older than this are discarded on dequeue. Zero or negative disables the check.
+     *
+     * <p>Kept in step with the API's {@code ScanReaper:QueuedTimeout} (5 minutes by default), which
+     * marks a still-Queued scan Failed once it expires. Anything older is a row the API has already
+     * given up on, so running it burns CPU on a result nobody is waiting for and can contradict the
+     * recorded status. Raising one without the other reopens that gap.</p>
+     */
+    @Value("${worker.scan.max-age-minutes:5}")
+    private long maxAgeMinutes;
 
     /** Queue depth at startup that is worth shouting about. */
     @Value("${worker.scan.backlog-warn-threshold:50}")
@@ -96,8 +104,8 @@ public class QueueListener implements Runnable {
             long depth = jedis.llen(queueName);
             if (depth > backlogWarnThreshold) {
                 log.warn("Queue '{}' holds {} job(s) at startup, above the warning threshold of {}. "
-                                + "Jobs older than {}h are discarded on dequeue; at most {} run at once.",
-                        queueName, depth, backlogWarnThreshold, maxAgeHours, maxConcurrent);
+                                + "Jobs older than {}m are discarded on dequeue; at most {} run at once.",
+                        queueName, depth, backlogWarnThreshold, maxAgeMinutes, maxConcurrent);
             } else {
                 log.info("Queue '{}' holds {} job(s) at startup.", queueName, depth);
             }
@@ -108,8 +116,8 @@ public class QueueListener implements Runnable {
 
     @Override
     public void run() {
-        log.info("QueueListener started — blocking on queue '{}' (max {} concurrent, discarding jobs older than {}h)",
-                queueName, maxConcurrent, maxAgeHours);
+        log.info("QueueListener started — blocking on queue '{}' (max {} concurrent, discarding jobs older than {}m)",
+                queueName, maxConcurrent, maxAgeMinutes);
 
         while (running) {
             boolean acquired = false;
@@ -127,14 +135,28 @@ public class QueueListener implements Runnable {
                 }
 
                 String payload = result.get(1);
-                executor.submit(() -> {
+                try {
+                    executor.submit(() -> {
+                        try {
+                            handle(payload);
+                        } finally {
+                            inFlight.release();
+                        }
+                    });
+                    acquired = false;           // ownership passed to the task
+                } catch (RejectedExecutionException ree) {
+                    // stop() raced the pop. The payload is already out of Redis, so putting it back
+                    // at the head is the difference between a delayed scan and a lost one. The permit
+                    // stays held so the finally below releases it.
+                    log.warn("Executor rejected a job during shutdown; requeuing at head of '{}'", queueName);
                     try {
-                        handle(payload);
-                    } finally {
-                        inFlight.release();
+                        jedis.lpush(queueName, payload);
+                    } catch (Exception requeueFailure) {
+                        log.error("Could not requeue payload after rejection, job is lost: {}",
+                                requeueFailure.getMessage());
                     }
-                });
-                acquired = false;           // ownership passed to the task
+                    running = false;
+                }
 
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
@@ -160,8 +182,8 @@ public class QueueListener implements Runnable {
             // Not checkpointed on purpose: a checkpoint would have WorkerRunner re-queue this on the
             // next boot, which is the loop this exists to break. The API's ScanReaper has already
             // failed the corresponding row.
-            log.warn("Discarding stale job [scanId={} domainId={} enqueuedAt={}] — older than {}h",
-                    job.scanId(), job.domainId(), job.enqueuedAt(), maxAgeHours);
+            log.warn("Discarding stale job [scanId={} domainId={} enqueuedAt={}] — older than {}m",
+                    job.scanId(), job.domainId(), job.enqueuedAt(), maxAgeMinutes);
             return;
         }
 
@@ -195,7 +217,7 @@ public class QueueListener implements Runnable {
      * concurrency cap bounds the cost either way.
      */
     private boolean isStale(ScanJob job) {
-        if (maxAgeHours <= 0) return false;
+        if (maxAgeMinutes <= 0) return false;
 
         String enqueuedAt = job.enqueuedAt();
         if (enqueuedAt == null || enqueuedAt.isBlank()) return false;
@@ -215,7 +237,7 @@ public class QueueListener implements Runnable {
             }
         }
 
-        return Duration.between(queuedAt, Instant.now()).toHours() >= maxAgeHours;
+        return Duration.between(queuedAt, Instant.now()).toMinutes() >= maxAgeMinutes;
     }
 
     private ScanJob deserialize(String raw) {
