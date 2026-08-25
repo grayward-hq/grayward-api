@@ -249,6 +249,26 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Main sources compile with the enable-preview flag, so the test JVM needs it too.
+                         Without it every preview-compiled class threw UnsupportedClassVersionError
+                         and no @SpringBootTest could load its context. -->
+                    <argLine>--enable-preview</argLine>
+                    <!-- Spring AI builds a real OpenAI client while the context starts, and the main
+                         properties default spring.ai.openai.api-key to empty (unlike the Anthropic
+                         and Gemini keys, which default to a placeholder), so OpenAiApi throws.
+                         Supplied as a system property rather than a test application.properties on
+                         purpose: that file shadows the main one wholesale and would knock out
+                         redis.*, datasource and everything else. -->
+                    <systemPropertyVariables>
+                        <spring.ai.openai.api-key>test-key-not-used</spring.ai.openai.api-key>
+                        <github.token>test-token-not-used</github.token>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <release>21</release>
