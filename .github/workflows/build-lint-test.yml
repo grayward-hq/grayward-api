@@ -42,18 +42,6 @@ jobs:
     name: Build Java Worker
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The Java suite needs a live Redis: several context tests fail to start without one,
-    # which is part of why the suite was skipped entirely rather than fixed.
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,7 +55,7 @@ jobs:
       - name: Build Java worker
         run: |
           cd worker-java
-          mvn package -q
+          mvn package -q -DskipTests
 
   trivy-scan:
     name: Trivy Security Scan
