@@ -12,9 +12,12 @@ import com.vulnwatch.worker.orchestrator.DomainScanOrchestrator.OrchestratorResu
 import com.vulnwatch.worker.orchestrator.mapper.SurfaceTypeMapper;
 import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
 import com.vulnwatch.worker.owasp.service.OWASPEvaluator;
+import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainFindings;
 import com.vulnwatch.worker.persistence.DomainPersistence;
 import com.vulnwatch.worker.persistence.OWASPPersistence;
+import com.vulnwatch.worker.persistence.SubdomainPersistence;
 import com.vulnwatch.worker.publisher.DomainIntelPublisher;
+import com.vulnwatch.worker.publisher.SubdomainDiscoveryPublisher;
 import com.vulnwatch.worker.state.ScanJobStateMachine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +44,8 @@ public class DomainJobProcessor implements JobProcessor {
     private final OWASPEvaluator owaspEvaluator;
     private final OWASPPersistence owaspPersistence;
     private final SurfaceTypeMapper surfaceTypeMapper; // Injected to resolve types before engine init
+    private final SubdomainPersistence subdomainPersistence;
+    private final SubdomainDiscoveryPublisher subdomainDiscoveryPublisher;
 
     @Override
     public void process(ScanJob job) {
@@ -83,6 +88,11 @@ public class DomainJobProcessor implements JobProcessor {
             log.warn("No findings persisted [scanId={}]", job.scanId());
         }
 
+        // Subdomain discovery side-effect: persist + notify. Additive only — never affects
+        // the findings/score/publish flow below, and does nothing if SUBDOMAINS wasn't
+        // one of the surfaces requested for this scan.
+        persistDiscoveredSubdomainsBestEffort(job, result);
+
         OWASPEvaluationResult owaspResult = owaspEvaluator.evaluate(
                 job.scanId(), findings,
                 result.engineResults(), result.aiResults()
@@ -101,6 +111,31 @@ public class DomainJobProcessor implements JobProcessor {
         );
 
         log.info("Scan complete [scanId={}]", job.scanId());
+    }
+
+    /**
+     * Looks for a successful SUBDOMAINS surface result and, if present, upserts the
+     * discovered hosts into "Subdomains" and publishes the discovery notification.
+     * Best-effort: a failure here must never fail the parent domain scan.
+     */
+    @SuppressWarnings("unchecked")
+    private void persistDiscoveredSubdomainsBestEffort(ScanJob job, OrchestratorResult result) {
+        try {
+            result.engineResults().stream()
+                    .filter(r -> r.surfaceType() == SurfaceType.SUBDOMAINS && r.success())
+                    .findFirst()
+                    .ifPresent(r -> {
+                        Object raw = r.rawResult() != null ? r.rawResult().get("findings") : null;
+                        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+                            return;
+                        }
+                        List<SubdomainFindings> discovered = (List<SubdomainFindings>) list;
+                        subdomainPersistence.upsertDiscovered(job.domainId(), discovered);
+                        subdomainDiscoveryPublisher.publish(job, discovered);
+                    });
+        } catch (Exception e) {
+            log.warn("Subdomain discovery side-effect failed [scanId={}]: {}", job.scanId(), e.getMessage(), e);
+        }
     }
 
     private String generateOwaspPostureBestEffort(OWASPEvaluationResult owaspResult) {
