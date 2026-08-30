@@ -59,7 +59,9 @@ public class SubdomainPersistence {
                 "IsActive", "FirstSeenAt", "LastSeenAt", "CreatedAt"
             ) VALUES (?, ?, ?, ?, ?, true, ?, ?, ?)
             ON CONFLICT ("DomainId", "Host") DO UPDATE SET
+                "Source"       = EXCLUDED."Source",
                 "RiskSeverity" = EXCLUDED."RiskSeverity",
+                "IsActive"     = EXCLUDED."IsActive",
                 "LastSeenAt"   = EXCLUDED."LastSeenAt",
                 "UpdatedAt"    = EXCLUDED."LastSeenAt"
             """;
@@ -115,6 +117,7 @@ public class SubdomainPersistence {
                 .build();
     }
 
+    // ── 1. Discovery (called from a Domain-scoped scan's DomainJobProcessor) ─────────
 
     /**
      * Upserts every subdomain discovered by the SUBDOMAINS surface for the given parent
@@ -145,6 +148,7 @@ public class SubdomainPersistence {
         }
     }
 
+    // ── 2. Scanning a subdomain directly (called from SubdomainJobProcessor) ─────────
 
     public void markRunning(String scanId) {
         OffsetDateTime now = now();
@@ -190,6 +194,7 @@ public class SubdomainPersistence {
         }
     }
 
+    // ── shared assembly helpers (intentionally mirrors DomainPersistence) ────────────
 
     private List<DomainFinding> assembleFindings(
             String scanId,
@@ -271,7 +276,7 @@ public class SubdomainPersistence {
         }
 
         if (engine.rawResult() == null) {
-            return engine.surfaceType().getLabel().formatted("%s scan completed");
+            return "%s scan completed".formatted(engine.surfaceType().getLabel());
         }
 
         Object raw = engine.rawResult().get("findings");

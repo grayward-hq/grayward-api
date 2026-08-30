@@ -5,6 +5,7 @@ import com.vulnwatch.worker.model.ScanJob;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,8 +46,8 @@ import java.util.stream.Collectors;
 @Component
 public class SurfaceTypeMapper {
 
-    private static final Set<SurfaceType> SUBDOMAIN_TARGET_DEFAULT_SURFACES = EnumSet.of(
-            SurfaceType.DNS, SurfaceType.SSL, SurfaceType.PORTS, SurfaceType.HTTP_HEADERS);
+    private static final Set<SurfaceType> SUBDOMAIN_TARGET_DEFAULT_SURFACES = Collections.unmodifiableSet(
+            EnumSet.of(SurfaceType.DNS, SurfaceType.SSL, SurfaceType.PORTS, SurfaceType.HTTP_HEADERS));
 
     public Set<SurfaceType> resolve(ScanJob job) {
         List<String> raw = job.surfaceTypes();

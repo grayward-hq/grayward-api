@@ -118,7 +118,6 @@ public class DomainJobProcessor implements JobProcessor {
      * discovered hosts into "Subdomains" and publishes the discovery notification.
      * Best-effort: a failure here must never fail the parent domain scan.
      */
-    @SuppressWarnings("unchecked")
     private void persistDiscoveredSubdomainsBestEffort(ScanJob job, OrchestratorResult result) {
         try {
             result.engineResults().stream()
@@ -129,7 +128,13 @@ public class DomainJobProcessor implements JobProcessor {
                         if (!(raw instanceof List<?> list) || list.isEmpty()) {
                             return;
                         }
-                        List<SubdomainFindings> discovered = (List<SubdomainFindings>) list;
+                        List<SubdomainFindings> discovered = list.stream()
+                                .filter(SubdomainFindings.class::isInstance)
+                                .map(SubdomainFindings.class::cast)
+                                .toList();
+                        if (discovered.isEmpty()) {
+                            return;
+                        }
                         subdomainPersistence.upsertDiscovered(job.domainId(), discovered);
                         subdomainDiscoveryPublisher.publish(job, discovered);
                     });

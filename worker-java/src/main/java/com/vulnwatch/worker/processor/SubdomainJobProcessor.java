@@ -77,6 +77,7 @@ public class SubdomainJobProcessor implements JobProcessor {
         stateMachine.start(job, targetSurfaces);
 
         try {
+            persistence.markRunning(scanId);
             executeScanPipeline(job);
             stateMachine.advance(job);
             checkpointManager.clear(scanId);
@@ -129,12 +130,9 @@ public class SubdomainJobProcessor implements JobProcessor {
     }
 
     private void handlePipelineFailure(ScanJob job, Exception e) {
-        // Mirrors DomainJobProcessor.handlePipelineFailure exactly — state machine + publish
-        // + checkpoint clear. persistence.markFailed(scanId) is available on
-        // SubdomainPersistence if this pipeline is later given its own reaping story, but
-        // isn't called here today since the Domain-scoped equivalent doesn't call it either.
         log.error("Subdomain scan failed [scanId={}]", job.scanId(), e);
         stateMachine.fail(job);
+        persistence.markFailed(job.scanId());
         publisher.publishFailure(job, e.getMessage());
         checkpointManager.clear(job.scanId());
     }
