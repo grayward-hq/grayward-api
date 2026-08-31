@@ -67,7 +67,7 @@ public static class Fakes
             Guid.NewGuid(),
             ScanTargetType.Domain,
             ScanCoverage.Quick,
-            SurfaceType.Dns | SurfaceType.Ssl | SurfaceType.Http,
+            SurfaceType.Dns | SurfaceType.Ssl | SurfaceType.HttpHeaders,
             domainId ?? Guid.NewGuid(),
             null);
  

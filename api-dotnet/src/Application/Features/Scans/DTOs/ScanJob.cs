@@ -6,7 +6,7 @@ public sealed record ScanJob(
     string RepoId,
     string ScanId,
     string ScanType,
-    string SurfaceType,
+    List<string> SurfaceTypes,
     string RequestedBy,
     string EnqueuedAt
 );

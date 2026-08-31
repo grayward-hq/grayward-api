@@ -16,7 +16,11 @@ public sealed class FakeScanJobFactory : IScanJobFactory
             scan.RepositoryId?.ToString() ?? "",
             scan.Id.ToString(),
             scan.Coverage.ToString(),
-            scan.SurfaceTypes.ToString(),
+            // Mirrors the real ScanJobFactory: a mask expands to one name per surface.
+            Enum.GetValues<global::Domain.Enums.SurfaceType>()
+                .Where(v => v != global::Domain.Enums.SurfaceType.None && scan.SurfaceTypes.HasFlag(v))
+                .Select(v => v.ToString())
+                .ToList(),
             scan.UserId.ToString(),
             DateTime.UtcNow.ToString("O"));
     }
