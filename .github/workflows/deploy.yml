@@ -102,25 +102,8 @@ jobs:
             JAR_DIR="$DEPLOY_DIR/worker-java/target"
             PUBLISH_BACKUP="${PUBLISH_DIR}-backup"
             JAR_BACKUP="${JAR_DIR}-backup"
-
-            # ── Backup (production only) ──────────────────────────────────
-            if [ "$BRANCH" = "main" ]; then
-              if [ -d "$PUBLISH_DIR" ] && [ "$(ls -A $PUBLISH_DIR)" ]; then
-                echo "Backing up current .NET publish..."
-                rm -rf "$PUBLISH_BACKUP"
-                cp -r "$PUBLISH_DIR" "$PUBLISH_BACKUP"
-              else
-                echo "No existing .NET publish found. Fresh deploy, no backup created."
-              fi
-
-              if [ -d "$JAR_DIR" ] && [ "$(ls -A $JAR_DIR)" ]; then
-                echo "Backing up current Java JAR..."
-                rm -rf "$JAR_BACKUP"
-                cp -r "$JAR_DIR" "$JAR_BACKUP"
-              else
-                echo "No existing Java JAR found. Fresh deploy, no backup created."
-              fi
-            fi
+            # Where the new publish is built before it replaces the live one.
+            PUBLISH_STAGE="${PUBLISH_DIR}-staging"
 
             # ── Check out the exact commit that was scanned ───────────────
             # Previously this pulled the branch tip, which is not necessarily the
@@ -150,24 +133,74 @@ jobs:
             echo "Linking worker application.properties..."
             ln -sfn "$WORKER_ENV" "$DEPLOY_DIR/worker-java/src/main/resources/application.properties"
 
+            # ── Snapshot the current release ──────────────────────────────
+            # Now taken for BOTH environments. It used to be production-only, which
+            # left staging with nothing to roll back to, so any failure after the
+            # builds stranded it on half-swapped artefacts.
+            echo "Snapshotting current release..."
+
+            if [ -d "$PUBLISH_DIR" ] && [ "$(ls -A "$PUBLISH_DIR" 2>/dev/null)" ]; then
+              rm -rf "$PUBLISH_BACKUP"
+              cp -r "$PUBLISH_DIR" "$PUBLISH_BACKUP"
+            else
+              echo "No existing .NET publish. Fresh deploy, nothing to snapshot."
+            fi
+
+            if [ -d "$JAR_DIR" ] && [ "$(ls -A "$JAR_DIR" 2>/dev/null)" ]; then
+              rm -rf "$JAR_BACKUP"
+              cp -r "$JAR_DIR" "$JAR_BACKUP"
+            else
+              echo "No existing Java JAR. Fresh deploy, nothing to snapshot."
+            fi
+
+            # Restores whatever was running before this deploy touched anything.
+            # Services are not restarted here: nothing has been stopped at any point
+            # where this is called, so the old processes are still serving.
+            restore_previous_release() {
+              echo "Restoring previous release..."
+              rm -rf "$PUBLISH_STAGE"
+
+              if [ -d "$JAR_BACKUP" ] && [ "$(ls -A "$JAR_BACKUP" 2>/dev/null)" ]; then
+                rm -rf "$JAR_DIR"
+                cp -r "$JAR_BACKUP" "$JAR_DIR"
+              fi
+            }
+
+            # ── Build the .NET API into a staging directory ───────────────
+            # Published beside the live directory rather than over it. The live
+            # publish is not touched until migrations have also succeeded, so a
+            # failure anywhere before the swap leaves code and schema exactly as they
+            # were: no half-deployed state, and no new binaries sitting on disk
+            # waiting for the next pm2 restart to pick them up.
+            echo "Building .NET API..."
+            rm -rf "$PUBLISH_STAGE"
+
+            if ! dotnet publish "$DEPLOY_DIR/api-dotnet/src/Web" -c Release -o "$PUBLISH_STAGE"; then
+              echo ".NET build failed. Live release untouched."
+              restore_previous_release
+              exit 1
+            fi
+
+            # ── Build the Java worker ─────────────────────────────────────
+            # mvnw clean package writes into target/, which IS the live jar directory,
+            # so this one cannot be staged the same way. The snapshot above is what
+            # makes it recoverable.
+            echo "Building Java worker..."
+            if ! (cd "$DEPLOY_DIR/worker-java" && ./mvnw clean package -DskipTests); then
+              echo "Java build failed."
+              restore_previous_release
+              exit 1
+            fi
+
             # ── Apply database migrations ─────────────────────────────────
-            # Deliberately before the builds. dotnet publish overwrites $PUBLISH_DIR
-            # in place and staging keeps no backup, so migrating after a build would
-            # leave the new binaries on disk if the migration failed — the old code
-            # keeps serving only until the next pm2 or host restart, which then
-            # silently brings up new code against an unmigrated schema. Running
-            # first means a migration failure aborts with nothing overwritten.
+            # After the builds and before the swap. A build failure now means no schema
+            # change at all, and a migration failure means no new code goes live, so the
+            # old dilemma between "schema ahead of code" and "code ahead of schema"
+            # simply does not arise.
             #
-            # The cost of this order is the reverse case: migrations land, then a
-            # build fails, leaving the schema ahead of the code. That is the safe
-            # direction and the reason migrations must stay expand-compatible —
-            # additive, no destructive changes in the same release as the code that
-            # depends on them.
-            #
-            # The app only self-migrates in Development (Program.cs), so without
-            # this nothing applies them outside a developer's machine — which is how
-            # staging ended up missing AddWaitlistJoinOrigin and 500ing on every
-            # waitlist join.
+            # The app only self-migrates in Development (Program.cs), so without this
+            # nothing applies them outside a developer machine, which is how staging
+            # ended up missing AddWaitlistJoinOrigin and 500ing on every waitlist join.
             echo "Applying database migrations..."
 
             export PATH="$PATH:$HOME/.dotnet/tools"
@@ -178,14 +211,15 @@ jobs:
 
             # Read the connection string with grep rather than sourcing the env file.
             # start.sh sources it and chokes on the multi-line PEM around line 56
-            # ("RSA: command not found"), which silently drops every variable after
-            # that point. Pulling out the one line we need avoids that entirely.
+            # ("RSA: command not found"), which silently drops every variable after that
+            # point. Pulling out the one line we need avoids that entirely.
             DB_CONN=$(grep -m1 '^ConnectionStrings__DefaultConnectionString=' "$API_ENV" | cut -d= -f2-)
             DB_CONN="${DB_CONN%\"}"
             DB_CONN="${DB_CONN#\"}"
 
             if [ -z "$DB_CONN" ]; then
-              echo "ConnectionStrings__DefaultConnectionString not found in $API_ENV. Aborting before anything is overwritten."
+              echo "ConnectionStrings__DefaultConnectionString not found in $API_ENV. Aborting; nothing swapped."
+              restore_previous_release
               exit 1
             fi
 
@@ -193,65 +227,33 @@ jobs:
                  --project "$DEPLOY_DIR/api-dotnet/src/Infrastructure" \
                  --startup-project "$DEPLOY_DIR/api-dotnet/src/Web" \
                  --configuration Release; then
-              echo "Database migration failed. Nothing was overwritten; the running services are untouched."
+              echo "Database migration failed. Nothing swapped; the running services are untouched."
+              restore_previous_release
               exit 1
             fi
 
             echo "Migrations applied."
 
-            # ── Build .NET API ────────────────────────────────────────────
-            echo "Building .NET API..."
-            if ! dotnet publish "$DEPLOY_DIR/api-dotnet/src/Web" -c Release -o "$PUBLISH_DIR"; then
-              echo ".NET build failed."
-              if [ "$BRANCH" = "main" ]; then
-                echo "Rolling back..."
-                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
-                  rm -rf "$PUBLISH_DIR"
-                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
-                fi
+            # ── Promote the staged release ────────────────────────────────
+            # Everything succeeded, so swap the new publish into place. Two renames on
+            # the same filesystem rather than a copy, so the window in which the live
+            # directory is incomplete is as small as it can be.
+            echo "Promoting staged release..."
+            rm -rf "${PUBLISH_DIR}-previous"
 
-                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
-                  rm -rf "$JAR_DIR"
-                  cp -r "$JAR_BACKUP" "$JAR_DIR"
-                fi
+            if [ -d "$PUBLISH_DIR" ]; then
+              mv "$PUBLISH_DIR" "${PUBLISH_DIR}-previous"
+            fi
 
-                pm2 delete $API_NAME || true
-                pm2 delete $WORKER_NAME || true
-                pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
-                pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
-                pm2 save
-                rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
-                echo "Rollback successful."
-              fi
+            if ! mv "$PUBLISH_STAGE" "$PUBLISH_DIR"; then
+              echo "Failed to promote the staged release. Rolling back."
+              rm -rf "$PUBLISH_DIR"
+              mv "${PUBLISH_DIR}-previous" "$PUBLISH_DIR" || true
+              restore_previous_release
               exit 1
             fi
 
-            # ── Build Java worker ─────────────────────────────────────────
-            echo "Building Java worker..."
-            if ! (cd "$DEPLOY_DIR/worker-java" && ./mvnw clean package -DskipTests); then
-              echo "Java build failed."
-              if [ "$BRANCH" = "main" ]; then
-                echo "Rolling back..."
-                if [ -d "$PUBLISH_BACKUP" ] && [ "$(ls -A $PUBLISH_BACKUP)" ]; then
-                  rm -rf "$PUBLISH_DIR"
-                  cp -r "$PUBLISH_BACKUP" "$PUBLISH_DIR"
-                fi
-
-                if [ -d "$JAR_BACKUP" ] && [ "$(ls -A $JAR_BACKUP)" ]; then
-                  rm -rf "$JAR_DIR"
-                  cp -r "$JAR_BACKUP" "$JAR_DIR"
-                fi
-
-                pm2 delete $API_NAME || true
-                pm2 delete $WORKER_NAME || true
-                pm2 start "$DEPLOY_DIR/start.sh" -f --name "$API_NAME" --cwd "$DEPLOY_DIR"
-                pm2 start "java --enable-preview -jar $JAR_DIR/*.jar" --name "$WORKER_NAME"
-                pm2 save
-                rm -rf "$PUBLISH_BACKUP" "$JAR_BACKUP"
-                echo "Rollback successful."
-              fi
-              exit 1
-            fi
+            rm -rf "${PUBLISH_DIR}-previous"
 
             # ── Stop existing PM2 processes ───────────────────────────────
             echo "Stopping existing PM2 processes..."
@@ -315,8 +317,10 @@ jobs:
               fi
             fi
 
-            # ── Cleanup backups after successful deploy (production only) ─
-            if [ "$BRANCH" = "main" ]; then
+            # ── Cleanup backups after a successful deploy ─────────────────
+            # Unconditional now: snapshots are taken for both environments, so staging
+            # would otherwise keep a stale copy around indefinitely.
+            if true; then
               if [ -d "$PUBLISH_BACKUP" ]; then
                 echo "Cleaning up .NET backup..."
                 rm -rf "$PUBLISH_BACKUP"
