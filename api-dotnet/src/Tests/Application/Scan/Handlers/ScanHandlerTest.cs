@@ -112,7 +112,7 @@ public class StartScanHandlerTests
                 "",
                 Guid.NewGuid().ToString(),
                 "Quick",
-                "Dns",
+                new List<string> { "Dns" },
                 _userId.ToString(),
                 DateTime.UtcNow.ToString("O")));
 
@@ -191,7 +191,7 @@ public class StartScanHandlerTests
                 "",
                 Guid.NewGuid().ToString(),
                 "Quick",
-                "Dns",
+                new List<string> { "Dns" },
                 _userId.ToString(),
                 DateTime.UtcNow.ToString("O")));
 

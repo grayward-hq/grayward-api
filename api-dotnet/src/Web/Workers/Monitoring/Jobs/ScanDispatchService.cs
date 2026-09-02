@@ -35,7 +35,14 @@ public sealed class ScanDispatchService(
             idempotencyKey: idempotencyKey,
             targetType: ScanTargetType.Domain,
             coverage: ScanCoverage.Full,
-            surfaceTypes: SurfaceType.Dns | SurfaceType.Ssl | SurfaceType.Http,
+            // Dns | Ssl | Http used to collapse to 3, since Http was 3 and already held both other
+            // bits. The payload never reached the worker either, so scheduled scans ran every
+            // scanner regardless of this list. Now that the mask decomposes and is actually sent,
+            // this list is what runs - so it names every domain surface the worker implements,
+            // preserving today's behaviour rather than silently narrowing it. Dependency and
+            // Secrets are omitted: no domain scanner implements them.
+            surfaceTypes: SurfaceType.Dns | SurfaceType.Ssl | SurfaceType.HttpHeaders
+                          | SurfaceType.Subdomains | SurfaceType.Ports,
             domainId: domainId);
 
         await scanRepo.AddAsync(scan, ct);
