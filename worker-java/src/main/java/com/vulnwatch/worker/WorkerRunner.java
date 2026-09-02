@@ -6,11 +6,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
+// Disabled in tests. This runner ends in queueListener.run(), which blocks on BLPOP
+// forever; Spring executes ApplicationRunner beans after every @SpringBootTest context
+// loads,
+// so the whole suite hung until CI timed out at 15 minutes. matchIfMissing keeps
+// production and local runs behaving exactly as before.
+@ConditionalOnProperty(name = "worker.runner.enabled", havingValue = "true", matchIfMissing = true)
 public class WorkerRunner implements ApplicationRunner {
 
     private final QueueListener queueListener;

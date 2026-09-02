@@ -41,6 +41,17 @@ jobs:
   build-java:
     name: Build Java Worker
     runs-on: ubuntu-latest
+    # The Java suite needs a live Redis: several Spring context tests cannot start without one.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,7 +66,7 @@ jobs:
       - name: Build Java worker
         run: |
           cd worker-java
-          mvn package -q -DskipTests
+          mvn package -q
 
   trivy-scan:
     name: Trivy Security Scan
