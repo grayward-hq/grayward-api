@@ -176,11 +176,11 @@ public final class CliExecutor {
 
     // ── Exception types ───────────────────────────────────────────────────────
 
-    public static class CliTimeoutException extends Exception {
+    public static class CliTimeoutException extends RuntimeException {
         public CliTimeoutException(String message) { super(message); }
     }
 
-    public static class CliExecutionException extends Exception {
+    public static class CliExecutionException extends RuntimeException {
         public CliExecutionException(String message, Throwable cause) { super(message, cause); }
     }
 }

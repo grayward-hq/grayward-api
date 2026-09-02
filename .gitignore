@@ -1,6 +1,5 @@
 /public
 .vs/
-.vscode/
 .idea/
 *.iml
 .DS_Store
@@ -14,3 +13,7 @@ public/fonts/
 temp_auto_push.bat
 temp_interactive_push.bat
 .gitignore
+
+# JVM crash dumps - produced when the JVM dies, never source
+hs_err_pid*.log
+replay_pid*.log

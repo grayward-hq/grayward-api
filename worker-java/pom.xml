@@ -264,7 +264,22 @@
                     <systemPropertyVariables>
                         <spring.ai.openai.api-key>test-key-not-used</spring.ai.openai.api-key>
                         <github.token>test-token-not-used</github.token>
+                        <!-- WorkerRunner ends in queueListener.run(), which blocks on BLPOP forever.
+                             Spring runs ApplicationRunner beans after every @SpringBootTest context
+                             loads, so the suite hung until CI timed out at 15 minutes. -->
+                        <worker.runner.enabled>false</worker.runner.enabled>
                     </systemPropertyVariables>
+                    <!-- These three shell out to real scanner binaries (dnsrecon, nuclei, nmap)
+                         rather than mocking CliExecutor, so they fail with CreateProcess error=2
+                         anywhere the tool is not installed — including GitHub runners. Excluded so
+                         the other 195 tests can run in CI at all; see the follow-up issue about
+                         either mocking the executor or provisioning the tools. Everything else,
+                         CliExecutorTest included, runs normally. -->
+                    <excludes>
+                        <exclude>**/engine/domain/DnsEngineTest.java</exclude>
+                        <exclude>**/engine/domain/NucleiTest.java</exclude>
+                        <exclude>**/engine/domain/NmapTest.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>
