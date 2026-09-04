@@ -12,12 +12,9 @@ import com.vulnwatch.worker.orchestrator.DomainScanOrchestrator.OrchestratorResu
 import com.vulnwatch.worker.orchestrator.mapper.SurfaceTypeMapper;
 import com.vulnwatch.worker.owasp.model.OWASPEvaluationResult;
 import com.vulnwatch.worker.owasp.service.OWASPEvaluator;
-import com.vulnwatch.worker.engine.domain.subfinder.models.SubdomainFindings;
-import com.vulnwatch.worker.persistence.DomainPersistence;
 import com.vulnwatch.worker.persistence.OWASPPersistence;
 import com.vulnwatch.worker.persistence.SubdomainPersistence;
 import com.vulnwatch.worker.publisher.DomainIntelPublisher;
-import com.vulnwatch.worker.publisher.SubdomainDiscoveryPublisher;
 import com.vulnwatch.worker.state.ScanJobStateMachine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,56 +24,71 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Orchestrates a full domain scan pipeline from initialization to persistence and notification.
+ * Handles jobs where ScanJob.scanType() == "Subdomain" — a user explicitly scanning one
+ * (or, via the API enqueuing several, all) of their discovered subdomains.
+ *
+ * By design, ScanJob's existing fields carry the subdomain target without any contract
+ * change: job.domainId() is the Subdomains.Id row, job.domainName() is the subdomain's
+ * FQDN. See the subdomain-scanning plan §0/§6 for the full contract the API producer must
+ * follow.
+ *
+ * The recursion guard (never run SUBDOMAINS against a subdomain) lives centrally in
+ * {@link SurfaceTypeMapper#resolve}, keyed off job.scanType() — NOT here. An earlier
+ * version of this class tried to strip it locally and pass the filtered set to
+ * primeScanContext(), but DomainScanOrchestrator.scan() independently re-resolves surfaces
+ * via SurfaceTypeMapper directly from the raw job, ignoring whatever primeScanContext()
+ * was given. Any guard that isn't inside the mapper itself never actually reaches scanner
+ * selection — so the mapper is the only place this can correctly be enforced, and it now
+ * is, for every SurfaceTypeMapper.resolve() call regardless of caller.
+ *
+ * Deliberately a parallel class to {@link DomainJobProcessor} rather than a branch inside
+ * it — reuses DomainScanOrchestrator, OWASPEvaluator/Persistence, ScanJobStateMachine,
+ * CheckpointManager and DomainIntelPublisher completely unchanged, and touches none of
+ * DomainJobProcessor's own tested code path.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DomainJobProcessor implements JobProcessor {
+public class SubdomainJobProcessor implements JobProcessor {
 
     private final DomainScanOrchestrator scanOrchestrator;
     private final AiEnricher aiEnricher;
     private final DomainCircuitBreakerAiEnricher surfaceAiEnricher;
-    private final DomainPersistence persistence;
+    private final SubdomainPersistence persistence;
     private final DomainIntelPublisher publisher;
     private final ScanJobStateMachine stateMachine;
     private final CheckpointManager checkpointManager;
     private final OWASPEvaluator owaspEvaluator;
     private final OWASPPersistence owaspPersistence;
-    private final SurfaceTypeMapper surfaceTypeMapper; // Injected to resolve types before engine init
-    private final SubdomainPersistence subdomainPersistence;
-    private final SubdomainDiscoveryPublisher subdomainDiscoveryPublisher;
+    private final SurfaceTypeMapper surfaceTypeMapper;
 
     @Override
     public void process(ScanJob job) {
         String scanId = job.scanId();
-        log.info("Starting domain scan [scanId={} domain={}]", scanId, job.domainName());
+        log.info("Starting subdomain scan [scanId={} subdomain={}]", scanId, job.domainName());
 
-        // 1. Resolve selections and prime cache maps BEFORE updating state engines
+        // SurfaceTypeMapper.resolve() already excludes SUBDOMAINS for ScanType=="Subdomain"
+        // jobs — in every fallback path (empty list, unparseable list, explicit inclusion) —
+        // so the set primed here is exactly what scanOrchestrator.scan() will select from
+        // when it re-resolves the same job below.
         Set<SurfaceType> requested = surfaceTypeMapper.resolve(job);
         List<SurfaceType> targetSurfaces = scanOrchestrator.primeScanContext(scanId, requested);
 
-        // 2. Pass the exact filtered list straight into the state machine.
-        // Pass the full job (not just scanId) so the RUNNING transition can be
-        // published with enough context (requestedBy) for the API to route it
-        // to the right user over SignalR.
         stateMachine.start(job, targetSurfaces);
 
         try {
+            persistence.markRunning(scanId);
             executeScanPipeline(job);
             stateMachine.advance(job);
             checkpointManager.clear(scanId);
         } catch (Exception e) {
             handlePipelineFailure(job, e);
         } finally {
-            // 3. Clear cache tracking definitions only after total workflow processing settles
             scanOrchestrator.clearScanContext(scanId);
         }
     }
 
     private void executeScanPipeline(ScanJob job) {
-//        describeJobBestEffort(job);
-
         OrchestratorResult result = scanOrchestrator.scan(job);
 
         List<DomainFinding> findings = persistence.saveFindings(
@@ -87,11 +99,6 @@ public class DomainJobProcessor implements JobProcessor {
         if (findings.isEmpty()) {
             log.warn("No findings persisted [scanId={}]", job.scanId());
         }
-
-        // Subdomain discovery side-effect: persist + notify. Additive only — never affects
-        // the findings/score/publish flow below, and does nothing if SUBDOMAINS wasn't
-        // one of the surfaces requested for this scan.
-        persistDiscoveredSubdomainsBestEffort(job, result);
 
         OWASPEvaluationResult owaspResult = owaspEvaluator.evaluate(
                 job.scanId(), findings,
@@ -110,37 +117,7 @@ public class DomainJobProcessor implements JobProcessor {
                 DomainIntel.of(job, owaspResult.overallScore(), owaspResult, surfaceAiEnricher.currentAvailability())
         );
 
-        log.info("Scan complete [scanId={}]", job.scanId());
-    }
-
-    /**
-     * Looks for a successful SUBDOMAINS surface result and, if present, upserts the
-     * discovered hosts into "Subdomains" and publishes the discovery notification.
-     * Best-effort: a failure here must never fail the parent domain scan.
-     */
-    private void persistDiscoveredSubdomainsBestEffort(ScanJob job, OrchestratorResult result) {
-        try {
-            result.engineResults().stream()
-                    .filter(r -> r.surfaceType() == SurfaceType.SUBDOMAINS && r.success())
-                    .findFirst()
-                    .ifPresent(r -> {
-                        Object raw = r.rawResult() != null ? r.rawResult().get("findings") : null;
-                        if (!(raw instanceof List<?> list) || list.isEmpty()) {
-                            return;
-                        }
-                        List<SubdomainFindings> discovered = list.stream()
-                                .filter(SubdomainFindings.class::isInstance)
-                                .map(SubdomainFindings.class::cast)
-                                .toList();
-                        if (discovered.isEmpty()) {
-                            return;
-                        }
-                        subdomainPersistence.upsertDiscovered(job.domainId(), discovered);
-                        subdomainDiscoveryPublisher.publish(job, discovered);
-                    });
-        } catch (Exception e) {
-            log.warn("Subdomain discovery side-effect failed [scanId={}]: {}", job.scanId(), e.getMessage(), e);
-        }
+        log.info("Subdomain scan complete [scanId={}]", job.scanId());
     }
 
     private String generateOwaspPostureBestEffort(OWASPEvaluationResult owaspResult) {
@@ -153,20 +130,10 @@ public class DomainJobProcessor implements JobProcessor {
     }
 
     private void handlePipelineFailure(ScanJob job, Exception e) {
-        log.error("Domain scan failed [scanId={}]", job.scanId(), e);
+        log.error("Subdomain scan failed [scanId={}]", job.scanId(), e);
         stateMachine.fail(job);
+        persistence.markFailed(job.scanId());
         publisher.publishFailure(job, e.getMessage());
         checkpointManager.clear(job.scanId());
-    }
-
-    private void describeJobBestEffort(ScanJob job) {
-        try {
-            String description = aiEnricher.describe(job);
-            if (description != null) {
-                log.info("Job description [scanId={}]: {}", job.scanId(), description);
-            }
-        } catch (Exception e) {
-            log.warn("Could not generate description [scanId={}]: {}", job.scanId(), e.getMessage());
-        }
     }
 }
