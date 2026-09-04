@@ -5,6 +5,7 @@ import com.vulnwatch.worker.processor.DomainJobProcessor;
 import com.vulnwatch.worker.processor.JobProcessor;
 import com.vulnwatch.worker.processor.RepositoryJobProcessor;
 import com.vulnwatch.worker.processor.RetryableProcessor;
+import com.vulnwatch.worker.processor.SubdomainJobProcessor;
 import redis.clients.jedis.JedisPooled;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,6 +41,15 @@ public class ProcessorConfig {
     @Bean("Domain")
     public JobProcessor domainOrchestrator(
             DomainJobProcessor processor,
+            JedisPooled jedis,
+            ObjectMapper mapper,
+            @Value("${worker.dlq.key:dead-letter}") String dlqKey) {
+        return new RetryableProcessor(processor, jedis, dlqKey, mapper);
+    }
+
+    @Bean("Subdomain")
+    public JobProcessor subdomainOrchestrator(
+            SubdomainJobProcessor processor,
             JedisPooled jedis,
             ObjectMapper mapper,
             @Value("${worker.dlq.key:dead-letter}") String dlqKey) {
