@@ -13,7 +13,7 @@ namespace Application.Features.Waitlist;
 /// <remarks>See <see cref="VulnwatchEmailLayout"/> for the shared chrome.</remarks>
 internal static class WaitlistAlreadyJoinedEmail
 {
-    public const string Subject = "You're already on the Vulnwatch waitlist";
+    public const string Subject = "You're already on the GrayWard waitlist";
 
     /// <param name="branding">Optional image assets and links.</param>
     /// <param name="status">The existing entry's status.</param>
@@ -33,7 +33,7 @@ internal static class WaitlistAlreadyJoinedEmail
         {
             WaitlistStatus.Pending =>
                 VulnwatchEmailLayout.Paragraph(
-                    "Good news &mdash; this email is <strong>already on the Vulnwatch waitlist</strong>. " +
+                    "Good news &mdash; this email is <strong>already on the GrayWard waitlist</strong>. " +
                     "You joined before, so there&rsquo;s no need to sign up again.") +
                 VulnwatchEmailLayout.Paragraph(
                     "You just haven&rsquo;t <strong>confirmed your email</strong> yet, so your spot isn&rsquo;t " +
@@ -42,7 +42,7 @@ internal static class WaitlistAlreadyJoinedEmail
 
             WaitlistStatus.EmailConfirmed =>
                 VulnwatchEmailLayout.Paragraph(
-                    "This email is <strong>already on the Vulnwatch waitlist</strong> and your email " +
+                    "This email is <strong>already on the GrayWard waitlist</strong> and your email " +
                     "address is <strong>already confirmed</strong> &mdash; you&rsquo;re all set, there&rsquo;s " +
                     "nothing more to do.") +
                 VulnwatchEmailLayout.Paragraph(
@@ -53,12 +53,12 @@ internal static class WaitlistAlreadyJoinedEmail
             WaitlistStatus.Promoted =>
                 VulnwatchEmailLayout.Paragraph(
                     "This email has <strong>already been invited off the waitlist</strong> &mdash; you have " +
-                    "a Vulnwatch account. Just sign in with this email; there&rsquo;s no need to join the " +
+                    "a GrayWard account. Just sign in with this email; there&rsquo;s no need to join the " +
                     "waitlist again.", last: true),
 
             _ =>
                 VulnwatchEmailLayout.Paragraph(
-                    "This email is already associated with the Vulnwatch waitlist.", last: true),
+                    "This email is already associated with the GrayWard waitlist.", last: true),
         };
 
         // The card is only shown for a confirmed entry: pending entries have not claimed a position
@@ -72,14 +72,14 @@ internal static class WaitlistAlreadyJoinedEmail
         return VulnwatchEmailLayout.Render(
             branding,
             title: "You're already on the waitlist",
-            preheader: "You're already on the Vulnwatch waitlist — here's where you stand.",
+            preheader: "You're already on the GrayWard waitlist — here's where you stand.",
             headingLead: "You&rsquo;re already on the",
             headingAccent: "waitlist!",
             bodyHtml: body,
             buttonLabel: "Back to Home",
             buttonUrl: branding.HomeUrl,
             footnote:
-                "If you didn&rsquo;t just try to join the Vulnwatch waitlist, you can safely ignore " +
+                "If you didn&rsquo;t just try to join the GrayWard waitlist, you can safely ignore " +
                 "this email &mdash; nothing has changed.",
             positionCard: positionCard);
     }

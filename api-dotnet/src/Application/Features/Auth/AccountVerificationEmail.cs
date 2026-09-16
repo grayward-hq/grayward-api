@@ -28,13 +28,13 @@ internal static class AccountVerificationEmail
                 $"Here&rsquo;s a new verification link, {Escape(displayName)}. The previous one may " +
                 "have expired or never arrived.")
             : VulnwatchEmailLayout.Paragraph(
-                $"Welcome to Vulnwatch, {Escape(displayName)}. Verify your email address to finish " +
+                $"Welcome to GrayWard, {Escape(displayName)}. Verify your email address to finish " +
                 "setting up your account.");
 
         return VulnwatchEmailLayout.Render(
             branding,
             title: "Verify your email",
-            preheader: "Verify your email address to finish setting up your Vulnwatch account.",
+            preheader: "Verify your email address to finish setting up your GrayWard account.",
             headingLead: "You&rsquo;re",
             headingAccent: "almost in",
             // The envelope pose: like the waitlist confirmation, this mail is waiting on an action
@@ -56,7 +56,7 @@ internal static class AccountVerificationEmail
             footnote:
                 "Or paste this link into your browser:<br>" +
                 $"<span style='word-break: break-all;'>{verificationLink}</span><br><br>" +
-                "If you didn&rsquo;t create a Vulnwatch account, you can safely ignore this email.");
+                "If you didn&rsquo;t create a GrayWard account, you can safely ignore this email.");
     }
 
     /// <summary>
