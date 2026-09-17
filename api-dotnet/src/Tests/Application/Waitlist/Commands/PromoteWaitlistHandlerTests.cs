@@ -85,7 +85,7 @@ public class PromoteWaitlistHandlerTests
         _mockWaitlistRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _mockEmailService.Verify(es => es.SendAsync(
             entry.Email,
-            "Welcome to Vulnwatch - Set Your Password",
+            "Welcome to GrayWard - Set Your Password",
             It.Is<string>(body => body.Contains("https://app.example.com/set-password/?email=test%40example.com&token=reset%20token"))),
             Times.Once);
     }
