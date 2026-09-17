@@ -10,19 +10,19 @@ namespace Application.Features.Waitlist;
 /// <remarks>See <see cref="VulnwatchEmailLayout"/> for the shared chrome.</remarks>
 internal static class WaitlistInvitationEmail
 {
-    public const string Subject = "Welcome to Vulnwatch - Set Your Password";
+    public const string Subject = "Welcome to GrayWard - Set Your Password";
 
     /// <param name="resetLink">One-time link to the password-set page.</param>
     public static string BuildBody(VulnwatchEmailBranding branding, string resetLink) =>
         VulnwatchEmailLayout.Render(
             branding,
-            title: "Welcome to Vulnwatch",
+            title: "Welcome to GrayWard",
             preheader: "Your waitlist spot has been activated — set your password to sign in.",
             headingLead: "You&rsquo;re",
             headingAccent: "in!",
             bodyHtml:
                 VulnwatchEmailLayout.Paragraph(
-                    "Your waitlist spot has been activated and your Vulnwatch account is ready.") +
+                    "Your waitlist spot has been activated and your GrayWard account is ready.") +
                 VulnwatchEmailLayout.Paragraph(
                     "Set a password to sign in and start monitoring your attack surface.", last: true),
             buttonLabel: "Set your password",

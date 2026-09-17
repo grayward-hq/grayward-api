@@ -22,19 +22,19 @@ namespace Application.Common.Email;
 internal static class VulnwatchEmailLayout
 {
     /// <summary>
-    /// Text green, deepened from the brand's <c>#A0E870</c>. That fill only reaches ~1.6:1 against the
+    /// Text green, deepened from the brand's <c>#061E29</c>. That fill only reaches ~1.6:1 against the
     /// card and is unreadable for low-vision recipients and on a phone outdoors; this hits ~4.6:1
     /// (WCAG AA) while still reading as the same green. Use <see cref="BrandGreenFill"/> for large
     /// areas of colour, where contrast is not at stake.
     /// </summary>
-    public const string BrandGreen = "#4E9A2A";
+    public const string BrandGreen = "#BFC9D1";
 
-    public const string BrandGreenFill = "#A0E870";
-    public const string BrandDark = "#072E28";
-    public const string CardBackground = "#F1F1F1";
-    public const string BodyText = "#6B7280";
-    public const string MutedText = "#9CA3AF";
-    public const string HeadingText = "#111827";
+    public const string BrandGreenFill = "#061E29";
+    public const string BrandDark = "#061E29";
+    public const string CardBackground = "#F0F0F0";        //#F1F1F1
+    public const string BodyText = "#666666";
+    public const string MutedText = "#BFC9D1";
+    public const string HeadingText = "#2B2B2B";    //#111827
     public const string FontStack = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
     /// <param name="title">Document title.</param>
@@ -106,8 +106,8 @@ internal static class VulnwatchEmailLayout
 
                             <p style='margin: 0 0 20px 0; font-family: {FontStack}; font-size: 13px;
                                       color: {BrandDark}; text-align: center; line-height: 1.6;'>
-                                Vulnwatch scans your surface. So you can focus on your business<br>
-                                &copy;{DateTime.UtcNow.Year} Vulnwatch
+                                GrayWard scans your surface. So you can focus on your business<br>
+                                &copy;{DateTime.UtcNow.Year} GrayWard
                             </p>
 
                             {BuildSocialLinks(branding)}
@@ -157,7 +157,7 @@ internal static class VulnwatchEmailLayout
                                                style='background-color: #FFFFFF; border-radius: 12px;'>
                                             <tr>
                                                 <td align='center' style='padding: 24px 48px;'>
-                                                    <p style='margin: 0 0 4px 0; font-family: {FontStack}; font-size: 34px;
+                                                    <p style='margin: 0 0 4px 0; font-family: {FontStack}; font-size: 42px;
                                                               font-weight: 700; color: {BrandDark}; line-height: 1.1;'>
                                                         #{position}
                                                     </p>
@@ -180,8 +180,8 @@ internal static class VulnwatchEmailLayout
 
         var mark = logo is null
             ? $@"<span style='font-family: {FontStack}; font-size: 20px; font-weight: 700;
-                              letter-spacing: 2px; color: {BrandDark};'>VULNWATCH</span>"
-            : $@"<img src='{Encode(logo)}' alt='Vulnwatch' width='180'
+                              letter-spacing: 2px; color: {BrandDark};'>GRAYWARD</span>"
+            : $@"<img src='{Encode(logo)}' alt='GrayWard' width='180'
                       style='display: block; border: 0; width: 180px; height: auto;'>";
 
         return $@"
