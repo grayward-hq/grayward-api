@@ -22,7 +22,7 @@
         <spring-data-commons.version>3.5.12</spring-data-commons.version>
         <spring-framework.version>6.2.19</spring-framework.version>
 
-        <netty.version>4.2.15.Final</netty.version>
+        <netty.version>4.2.17.Final</netty.version>
         <postgresql.version>42.7.13</postgresql.version>
         <jackson-bom.version>2.22.1</jackson-bom.version>
         <micrometer.version>1.15.12</micrometer.version>
