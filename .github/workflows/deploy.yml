@@ -1,4 +1,5 @@
 name: Build and Deploy
+
 on:
   pull_request:
     branches: [staging, main]
@@ -7,26 +8,21 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Least privilege: nothing here writes to the repo. Without this the default token
-# is read/write for the whole repository.
 permissions:
   contents: read
 
 jobs:
   trivy-scan:
     name: Trivy Security Scan
-    # head.repo.full_name, not repository.fork: the latter describes the repo the
-    # workflow runs in (always false upstream), so it never actually guarded anything.
     if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v4
         with:
-          # Keeps the token out of .git/config, where later steps could read it.
           persist-credentials: false
       - name: Set up Java 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -36,7 +32,7 @@ jobs:
           cd worker-java
           mvn dependency:resolve -q
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -54,29 +50,21 @@ jobs:
     timeout-minutes: 20
     environment:
       name: ${{ github.event.pull_request.base.ref == 'main' && 'production' || 'staging' }}
-    # One deploy at a time per environment. The script stops services, swaps the
-    # publish directory and restarts; two overlapping runs would interleave those
-    # steps on the same server. Queued rather than cancelled so a merge is never
-    # silently skipped.
     concurrency:
       group: deploy-${{ github.event.pull_request.base.ref }}
       cancel-in-progress: false
-    # Overrides the workflow-level contents: read so the failure step below can
-    # open an issue. Scoped to this job rather than the whole workflow.
     permissions:
       contents: read
       issues: write
     steps:
-      # No checkout: the build runs on the remote host via ssh, so the runner's
-      # workspace was never used. The secrets are passed to the action directly
-      # rather than through a job-level env block, which would have exposed them
-      # to every step in the job.
       - name: Deploy on server
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: '60s'
+          command_timeout: '15m'
           script: |
             if [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
               DEPLOY_DIR="/var/www/backend-production"
@@ -84,33 +72,27 @@ jobs:
               WORKER_NAME="worker-production"
               BRANCH="main"
               API_PORT=5001
-              START_SH="/etc/vulnwatch/production/start.sh"
-              API_ENV="/etc/vulnwatch/production/api.env"
-              WORKER_ENV="/etc/vulnwatch/production/worker.properties"
+              START_SH="/etc/grayward/production/start.sh"
+              API_ENV="/etc/grayward/production/api.env"
+              WORKER_ENV="/etc/grayward/production/worker.properties"
             else
               DEPLOY_DIR="/var/www/backend-staging"
               API_NAME="api-staging"
               WORKER_NAME="worker-staging"
               BRANCH="staging"
               API_PORT=5000
-              START_SH="/etc/vulnwatch/staging/start.sh"
-              API_ENV="/etc/vulnwatch/staging/api.env"
-              WORKER_ENV="/etc/vulnwatch/staging/worker.properties"
+              START_SH="/etc/grayward/staging/start.sh"
+              API_ENV="/etc/grayward/staging/api.env"
+              WORKER_ENV="/etc/grayward/staging/worker.properties"
             fi
 
             PUBLISH_DIR="$DEPLOY_DIR/publish"
             JAR_DIR="$DEPLOY_DIR/worker-java/target"
             PUBLISH_BACKUP="${PUBLISH_DIR}-backup"
             JAR_BACKUP="${JAR_DIR}-backup"
-            # Where the new publish is built before it replaces the live one.
             PUBLISH_STAGE="${PUBLISH_DIR}-staging"
 
             # ── Check out the exact commit that was scanned ───────────────
-            # Previously this pulled the branch tip, which is not necessarily the
-            # commit trivy-scan just approved: anything merged between the scan and
-            # the deploy shipped unscanned. Checking out the merge commit for this
-            # run closes that window and makes the deploy reproducible — re-running
-            # it deploys the same code rather than whatever has landed since.
             DEPLOY_SHA="${{ github.event.pull_request.merge_commit_sha || github.sha }}"
             echo "Deploying $DEPLOY_SHA on $BRANCH..."
             cd "$DEPLOY_DIR"
@@ -134,9 +116,6 @@ jobs:
             ln -sfn "$WORKER_ENV" "$DEPLOY_DIR/worker-java/src/main/resources/application.properties"
 
             # ── Snapshot the current release ──────────────────────────────
-            # Now taken for BOTH environments. It used to be production-only, which
-            # left staging with nothing to roll back to, so any failure after the
-            # builds stranded it on half-swapped artefacts.
             echo "Snapshotting current release..."
 
             if [ -d "$PUBLISH_DIR" ] && [ "$(ls -A "$PUBLISH_DIR" 2>/dev/null)" ]; then
@@ -153,9 +132,6 @@ jobs:
               echo "No existing Java JAR. Fresh deploy, nothing to snapshot."
             fi
 
-            # Restores whatever was running before this deploy touched anything.
-            # Services are not restarted here: nothing has been stopped at any point
-            # where this is called, so the old processes are still serving.
             restore_previous_release() {
               echo "Restoring previous release..."
               rm -rf "$PUBLISH_STAGE"
@@ -167,11 +143,6 @@ jobs:
             }
 
             # ── Build the .NET API into a staging directory ───────────────
-            # Published beside the live directory rather than over it. The live
-            # publish is not touched until migrations have also succeeded, so a
-            # failure anywhere before the swap leaves code and schema exactly as they
-            # were: no half-deployed state, and no new binaries sitting on disk
-            # waiting for the next pm2 restart to pick them up.
             echo "Building .NET API..."
             rm -rf "$PUBLISH_STAGE"
 
@@ -182,9 +153,6 @@ jobs:
             fi
 
             # ── Build the Java worker ─────────────────────────────────────
-            # mvnw clean package writes into target/, which IS the live jar directory,
-            # so this one cannot be staged the same way. The snapshot above is what
-            # makes it recoverable.
             echo "Building Java worker..."
             if ! (cd "$DEPLOY_DIR/worker-java" && ./mvnw clean package -DskipTests); then
               echo "Java build failed."
@@ -193,14 +161,6 @@ jobs:
             fi
 
             # ── Apply database migrations ─────────────────────────────────
-            # After the builds and before the swap. A build failure now means no schema
-            # change at all, and a migration failure means no new code goes live, so the
-            # old dilemma between "schema ahead of code" and "code ahead of schema"
-            # simply does not arise.
-            #
-            # The app only self-migrates in Development (Program.cs), so without this
-            # nothing applies them outside a developer machine, which is how staging
-            # ended up missing AddWaitlistJoinOrigin and 500ing on every waitlist join.
             echo "Applying database migrations..."
 
             export PATH="$PATH:$HOME/.dotnet/tools"
@@ -209,10 +169,6 @@ jobs:
               dotnet tool install --global dotnet-ef || dotnet tool update --global dotnet-ef
             fi
 
-            # Read the connection string with grep rather than sourcing the env file.
-            # start.sh sources it and chokes on the multi-line PEM around line 56
-            # ("RSA: command not found"), which silently drops every variable after that
-            # point. Pulling out the one line we need avoids that entirely.
             DB_CONN=$(grep -m1 '^ConnectionStrings__DefaultConnectionString=' "$API_ENV" | cut -d= -f2-)
             DB_CONN="${DB_CONN%\"}"
             DB_CONN="${DB_CONN#\"}"
@@ -235,9 +191,6 @@ jobs:
             echo "Migrations applied."
 
             # ── Promote the staged release ────────────────────────────────
-            # Everything succeeded, so swap the new publish into place. Two renames on
-            # the same filesystem rather than a copy, so the window in which the live
-            # directory is incomplete is as small as it can be.
             echo "Promoting staged release..."
             rm -rf "${PUBLISH_DIR}-previous"
 
@@ -318,8 +271,6 @@ jobs:
             fi
 
             # ── Cleanup backups after a successful deploy ─────────────────
-            # Unconditional now: snapshots are taken for both environments, so staging
-            # would otherwise keep a stale copy around indefinitely.
             if true; then
               if [ -d "$PUBLISH_BACKUP" ]; then
                 echo "Cleaning up .NET backup..."
@@ -336,10 +287,6 @@ jobs:
             pm2 save
             pm2 list
 
-      # A failed deploy used to be silent. deploy.yml was invalid from 2026-07-07
-      # and every run failed in 0s for five weeks with nobody notified, while
-      # merged PRs appeared to ship. This opens an issue so the next outage is
-      # visible the same day. No external secrets needed — it uses GITHUB_TOKEN.
       - name: Open an issue if the deploy failed
         if: failure()
         env:
