@@ -40,7 +40,7 @@ public class VerifyDomainHandler(
 
         if (config.GetValue<bool>("Dns:Lookup"))
         {
-            var txtHost = $"_vulnwatch-verify.{record.DomainName}";
+            var txtHost = $"_grayward-verify.{record.DomainName}";
             var txtValues = await dnsResolver.GetTxtRecords(txtHost, ct);
 
             foreach (var value in txtValues)
