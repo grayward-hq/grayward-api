@@ -135,7 +135,7 @@ public static class DomainOwnershipWarningAlertFactory
                     <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;">_grayward-verify.{e.DomainName}</code>
                   </li>
                   <li>If the record exists but this alert keeps appearing, please
-                    <a href="mailto:support@vulnwatch.io" style="color:#B45309;">contact support</a>
+                    <a href="mailto:support@grayward.net" style="color:#B45309;">contact support</a>
                     — it may be a DNS propagation issue.
                   </li>
                   <li>If you removed the record intentionally and no longer need monitoring, no action is required.</li>
@@ -237,7 +237,7 @@ public static class DomainOwnershipWarningAlertFactory
                     and click <strong>Verify</strong> on the domain — monitoring will resume immediately.
                   </li>
                   <li>If the record exists but monitoring is still paused, please
-                    <a href="mailto:support@vulnwatch.io" style="color:#B45309;">contact support</a>
+                    <a href="mailto:support@grayward.net" style="color:#B45309;">contact support</a>
                     — it may be a DNS propagation delay.
                   </li>
                 </ul>
@@ -349,7 +349,7 @@ public static class DomainOwnershipWarningAlertFactory
             <hr style="border:none;border-top:1px solid #e4e4e7;margin:0 0 20px;"/>
             <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6;">
               If you did not expect this or believe this was an error, please
-              <a href="mailto:support@vulnwatch.io" style="color:#71717a;">contact support</a>.
+              <a href="mailto:support@grayward.net" style="color:#71717a;">contact support</a>.
             </p>
             """);
     }
