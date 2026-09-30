@@ -261,7 +261,7 @@ public static class DomainOwnershipWarningAlertFactory
 
         return AlertEmailTemplates.Wrap(
             title: "Domain Removed — Ownership Lost",
-            previewText: $"{e.DomainName} has been removed from your VulnWatch account",
+            previewText: $"{e.DomainName} has been removed from your GrayWard account",
             innerContent: $"""
             <!-- Severity Banner -->
             <table cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 24px;">
