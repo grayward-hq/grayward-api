@@ -114,14 +114,14 @@ public static class DomainOwnershipWarningAlertFactory
               <tr><td style="padding:20px 24px;">
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#27500A;">Why do we check this?</p>
                 <p style="margin:0;font-size:13px;color:#3B6D11;line-height:1.8;">
-                  VulnWatch periodically confirms you still own a domain before running
+                  GrayWard periodically confirms you still own a domain before running
                   security scans on it. This protects both you and third parties — we
                   never scan a domain without confirmed ownership. The check looks for
                   a TXT record at:
                 </p>
                 <p style="margin:10px 0 0;font-family:monospace;font-size:13px;color:#27500A;
                           background:#D1FAE5;padding:8px 12px;border-radius:4px;display:inline-block;">
-                  _vulnwatch-verify.{e.DomainName}
+                  _grayward-verify.{e.DomainName}
                 </p>
               </td></tr>
             </table>
@@ -132,10 +132,10 @@ public static class DomainOwnershipWarningAlertFactory
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#92400E;">What should I do?</p>
                 <ul style="margin:0;padding:0 0 0 20px;font-size:13px;color:#78350F;line-height:2;">
                   <li>Log in to your DNS provider and confirm the TXT record still exists at
-                    <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;">_vulnwatch-verify.{e.DomainName}</code>
+                    <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;">_grayward-verify.{e.DomainName}</code>
                   </li>
                   <li>If the record exists but this alert keeps appearing, please
-                    <a href="mailto:support@vulnwatch.io" style="color:#B45309;">contact support</a>
+                    <a href="mailto:support@grayward.net" style="color:#B45309;">contact support</a>
                     — it may be a DNS propagation issue.
                   </li>
                   <li>If you removed the record intentionally and no longer need monitoring, no action is required.</li>
@@ -214,13 +214,13 @@ public static class DomainOwnershipWarningAlertFactory
               <tr><td style="padding:20px 24px;">
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#27500A;">Why do we check this?</p>
                 <p style="margin:0;font-size:13px;color:#3B6D11;line-height:1.8;">
-                  VulnWatch confirms domain ownership before running security scans.
+                  GrayWard confirms domain ownership before running security scans.
                   This protects you and third parties — we never scan a domain without
                   confirmed ownership. The check looks for a TXT record at:
                 </p>
                 <p style="margin:10px 0 0;font-family:monospace;font-size:13px;color:#27500A;
                           background:#D1FAE5;padding:8px 12px;border-radius:4px;display:inline-block;">
-                  _vulnwatch-verify.{e.DomainName}
+                  _grayward-verify.{e.DomainName}
                 </p>
               </td></tr>
             </table>
@@ -231,13 +231,13 @@ public static class DomainOwnershipWarningAlertFactory
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#92400E;">How to restore monitoring</p>
                 <ul style="margin:0;padding:0 0 0 20px;font-size:13px;color:#78350F;line-height:2;">
                   <li>Log in to your DNS provider and confirm the TXT record exists at
-                    <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;">_vulnwatch-verify.{e.DomainName}</code>
+                    <code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;">_grayward-verify.{e.DomainName}</code>
                   </li>
-                  <li>Once the record is back in DNS, return to your VulnWatch dashboard
+                  <li>Once the record is back in DNS, return to your GrayWard dashboard
                     and click <strong>Verify</strong> on the domain — monitoring will resume immediately.
                   </li>
                   <li>If the record exists but monitoring is still paused, please
-                    <a href="mailto:support@vulnwatch.io" style="color:#B45309;">contact support</a>
+                    <a href="mailto:support@grayward.net" style="color:#B45309;">contact support</a>
                     — it may be a DNS propagation delay.
                   </li>
                 </ul>
@@ -307,10 +307,10 @@ public static class DomainOwnershipWarningAlertFactory
               <tr><td style="padding:20px 24px;">
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#27500A;">Why did this happen?</p>
                 <p style="margin:0;font-size:13px;color:#3B6D11;line-height:1.8;">
-                  VulnWatch confirms domain ownership before running security scans
+                  GrayWard confirms domain ownership before running security scans
                   to ensure we only scan infrastructure you actually control. When the
                   ownership TXT record at
-                  <code style="background:#D1FAE5;padding:1px 5px;border-radius:3px;">_vulnwatch-verify.{e.DomainName}</code>
+                  <code style="background:#D1FAE5;padding:1px 5px;border-radius:3px;">_grayward-verify.{e.DomainName}</code>
                   is absent for 7 consecutive days, we remove the domain from monitoring
                   as a precaution.
                 </p>
@@ -322,11 +322,11 @@ public static class DomainOwnershipWarningAlertFactory
               <tr><td style="padding:20px 24px;">
                 <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#991B1B;">Still own this domain? Here's how to recover it</p>
                 <ul style="margin:0;padding:0 0 0 20px;font-size:13px;color:#B91C1C;line-height:2;">
-                  <li>Go to your VulnWatch dashboard using the button below</li>
+                  <li>Go to your GrayWard dashboard using the button below</li>
                   <li>Find <strong>{e.DomainName}</strong> — it is still in your account marked as Revoked</li>
                   <li>Click <strong>Get New Token</strong> to generate a fresh verification token</li>
                   <li>Add the new TXT record to your DNS at
-                    <code style="background:#FEE2E2;padding:1px 5px;border-radius:3px;">_vulnwatch-verify.{e.DomainName}</code>
+                    <code style="background:#FEE2E2;padding:1px 5px;border-radius:3px;">_grayward-verify.{e.DomainName}</code>
                   </li>
                   <li>Return to the dashboard and click <strong>Verify</strong> — monitoring will be fully restored</li>
                 </ul>
@@ -349,7 +349,7 @@ public static class DomainOwnershipWarningAlertFactory
             <hr style="border:none;border-top:1px solid #e4e4e7;margin:0 0 20px;"/>
             <p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6;">
               If you did not expect this or believe this was an error, please
-              <a href="mailto:support@vulnwatch.io" style="color:#71717a;">contact support</a>.
+              <a href="mailto:support@grayward.net" style="color:#71717a;">contact support</a>.
             </p>
             """);
     }
