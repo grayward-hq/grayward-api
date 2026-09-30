@@ -13,7 +13,7 @@ public record RegisterDomainResponse(Guid Id, string DomainName, string Verifica
         token,
         domain.VerificationStatus,
         new DnsInstructions(
-            TxtRecord: $"_vulnwatch-verify",
+            TxtRecord: $"_grayward-verify",
             Value: token));
 }
 
