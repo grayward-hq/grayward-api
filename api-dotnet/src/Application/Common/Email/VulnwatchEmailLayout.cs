@@ -29,12 +29,12 @@ internal static class VulnwatchEmailLayout
     /// </summary>
     public const string BrandGreen = "#BFC9D1";
 
-    public const string BrandGreenFill = "#061E29";
-    public const string BrandDark = "#061E29";
-    public const string CardBackground = "#F0F0F0";        //#F1F1F1
-    public const string BodyText = "#666666";
-    public const string MutedText = "#BFC9D1";
-    public const string HeadingText = "#2B2B2B";    //#111827
+    public const string BrandGreenFill = "#0E264F";
+    public const string BrandDark = "#0E264F";
+    public const string CardBackground = "#FFFFFF";        
+    public const string BodyText = "#2C2C2C";
+    public const string MutedText = "#C0D7FE";
+    public const string HeadingText = "#172033";   
     public const string FontStack = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
     /// <param name="title">Document title.</param>
