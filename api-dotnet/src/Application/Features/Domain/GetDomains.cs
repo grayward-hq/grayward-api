@@ -60,7 +60,7 @@ public class GetDomainsHandler(
             if (d.VerificationStatus == VerificationStatus.Pending && d.VerificationToken is not null)
             {
                 instructions =  new DnsInstructions(
-                TxtRecord: $"_vulnwatch-verify",
+                TxtRecord: $"_grayward-verify",
                 Value: d.VerificationToken);
             }
 
