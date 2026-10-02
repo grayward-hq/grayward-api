@@ -1,5 +1,6 @@
 /public
 .vs/
+.vscode/
 .idea/
 *.iml
 .DS_Store
