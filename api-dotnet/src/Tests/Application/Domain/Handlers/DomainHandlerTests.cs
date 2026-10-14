@@ -47,7 +47,7 @@ public class RegisterDomainHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.DomainName.Should().Be("example.com");
         result.Value.VerificationToken.Should().Be("rawtoken");
-        result.Value.Instructions.TxtRecord.Should().Be("_vulnwatch-verify");
+        result.Value.Instructions.TxtRecord.Should().Be("_grayward-verify");
     }
  
     [Fact]

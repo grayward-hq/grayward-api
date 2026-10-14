@@ -11,7 +11,7 @@ namespace Application.Features.Waitlist;
 /// </remarks>
 internal static class WaitlistConfirmedEmail
 {
-    public const string Subject = "You're on the Vulnwatch waitlist!";
+    public const string Subject = "You're on the GrayWard waitlist!";
 
     /// <param name="position">The live queue position just claimed.</param>
     /// <param name="totalConfirmed">Size of the confirmed queue — the card's denominator.</param>
@@ -23,12 +23,12 @@ internal static class WaitlistConfirmedEmail
         string referralLink) => VulnwatchEmailLayout.Render(
         branding,
         title: "You're in. Spot secured",
-        preheader: $"Your spot is reserved — you're #{position} on the Vulnwatch waitlist.",
+        preheader: $"Your spot is reserved — you're #{position} on the GrayWard waitlist.",
         headingLead: "You&rsquo;re in. Spot",
         headingAccent: "secured",
         positionCard: VulnwatchEmailLayout.PositionCard(position, totalConfirmed),
         bodyHtml:
-            VulnwatchEmailLayout.Paragraph("Welcome to Vulnwatch. Your spot is officially reserved.") +
+            VulnwatchEmailLayout.Paragraph("Welcome to GrayWard. Your spot is officially reserved.") +
             VulnwatchEmailLayout.Paragraph(
                 "We&rsquo;ll notify you the moment early access is available.") +
             VulnwatchEmailLayout.Paragraph(

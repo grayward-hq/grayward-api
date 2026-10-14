@@ -201,7 +201,7 @@ public class AlertService : IAlertService
                 type = "context",
                 elements = new object[]
                 {
-                    new { type = "mrkdwn", text = "VulnWatch Security Monitoring" }
+                    new { type = "mrkdwn", text = "GrayWard Security Monitoring" }
                 }
             }
         };

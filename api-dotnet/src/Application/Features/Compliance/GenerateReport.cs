@@ -111,7 +111,7 @@ public class GenerateReportHandler(
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("VulnWatch").FontSize(18).Bold()
+                    col.Item().Text("GrayWard").FontSize(18).Bold()
                         .FontColor(Colors.Grey.Darken4);
                     col.Item().Text($"Security Report — {domainName}")
                         .FontSize(10).FontColor(Colors.Grey.Medium);
@@ -336,7 +336,7 @@ public class GenerateReportHandler(
             .PaddingTop(8)
             .Row(row =>
             {
-                row.RelativeItem().Text("VulnWatch — Vulnerability Monitoring Platform")
+                row.RelativeItem().Text("GrayWard — Vulnerability Monitoring Platform")
                     .FontSize(8).FontColor(Colors.Grey.Medium);
 
                 row.RelativeItem().AlignCenter()
