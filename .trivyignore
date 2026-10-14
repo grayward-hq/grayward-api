@@ -1,0 +1,19 @@
+# CVE-2026-47890, CVE-2026-47892 — Spring Framework (spring-webflux 6.2.19)
+#
+# Both CVEs require Spring Framework 7.0.9 for an open-source fix; the 6.2.20
+# backport exists but is gated behind paid Spring Enterprise Support. worker-java
+# is pinned to spring-boot-starter-parent 3.5.14 (built against Framework 6.x) —
+# forcing Framework 7.x via the version property would very likely break the
+# worker at runtime, since Framework 7 pairs with Spring Boot 4.
+#
+# Not exploitable here: spring-webflux is pulled in only transitively, via the
+# Spring AI starters' WebClient (spring-ai-retry -> spring-web/spring-webflux),
+# used purely as an outbound HTTP client for AI model calls. worker-java defines
+# no WebFlux functional-endpoint routes and no SSE-over-view rendering — the
+# exact code paths both CVEs are in. There is no server-side WebFlux surface
+# for either CVE to reach.
+#
+# Revisit at the next Spring Boot major-version upgrade (3.x -> 4.x), which
+# would bring Framework 7.x in cleanly. Review by 2027-01-14.
+CVE-2026-47890
+CVE-2026-47892
