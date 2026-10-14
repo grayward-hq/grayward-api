@@ -50,7 +50,7 @@ public class ForgotPasswordHandler : IRequestHandler<ForgotPasswordCommand, Resu
             : user.FirstName;
 
         var body = BuildForgotPasswordEmailBody(displayName, resetLink);
-        await _email.SendAsync(cmd.Email, "Reset your VulnWatch password", body);
+        await _email.SendAsync(cmd.Email, "Reset your GrayWard password", body);
 
         return Result<MessageResponse>.Success(MessageResponse.Create(message));
     }

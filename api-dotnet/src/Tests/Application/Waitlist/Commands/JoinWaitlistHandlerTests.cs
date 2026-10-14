@@ -101,7 +101,7 @@ public class JoinWaitlistHandlerTests
             Times.Once);
         _mockEmailService.Verify(es => es.SendAsync(
             "test@example.com",
-            "Confirm Your Email - Vulnwatch Waitlist",
+            "Confirm Your Email - GrayWard Waitlist",
             It.Is<string>(body => body.Contains("http://localhost:3000/waitlist/cancel?email=test%40example.com&token=cancel-token"))),
             Times.Once);
     }

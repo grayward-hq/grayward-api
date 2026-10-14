@@ -30,11 +30,11 @@ public sealed class OwnershipCheckService(
         if (domain.VerificationStatus != VerificationStatus.Verified)
             return;
 
-        var txtHost   = $"_vulnwatch-verify.{domain.DomainName}";
+        var txtHost   = $"_grayward-verify.{domain.DomainName}";
         var txtValues = await dnsResolver.GetTxtRecords(txtHost, ct);
 
         var recordPresent = txtValues.Any(v =>
-            v.StartsWith("vulnscan-verify=", StringComparison.OrdinalIgnoreCase));
+            v.StartsWith("grayscan-verify=", StringComparison.OrdinalIgnoreCase));
 
         if (recordPresent)
         {

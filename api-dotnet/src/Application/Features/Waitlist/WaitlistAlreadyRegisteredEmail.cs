@@ -14,17 +14,17 @@ namespace Application.Features.Waitlist;
 /// </remarks>
 internal static class WaitlistAlreadyRegisteredEmail
 {
-    public const string Subject = "You already have a Vulnwatch account";
+    public const string Subject = "You already have a GrayWard account";
 
     public static string BuildBody(VulnwatchEmailBranding branding) => VulnwatchEmailLayout.Render(
         branding,
         title: "You're already protected",
-        preheader: "This email is already linked to an active Vulnwatch account — just sign in.",
+        preheader: "This email is already linked to an active GrayWard account — just sign in.",
         headingLead: "You&rsquo;re already",
         headingAccent: "protected!",
         bodyHtml:
             VulnwatchEmailLayout.Paragraph(
-                "This email is already linked to an active Vulnwatch account.") +
+                "This email is already linked to an active GrayWard account.") +
             VulnwatchEmailLayout.Paragraph(
                 "You can continue monitoring your attack surface from your existing dashboard.") +
             VulnwatchEmailLayout.Paragraph(

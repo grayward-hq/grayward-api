@@ -13,19 +13,19 @@ namespace Application.Features.Waitlist;
 /// </remarks>
 internal static class WaitlistCancellationEmail
 {
-    public const string Subject = "Cancel your Vulnwatch waitlist spot";
+    public const string Subject = "Cancel your GrayWard waitlist spot";
 
     /// <param name="cancellationLink">Link to the confirmation page; cancels nothing on its own.</param>
     public static string BuildBody(VulnwatchEmailBranding branding, string cancellationLink) =>
         VulnwatchEmailLayout.Render(
             branding,
             title: "Cancel your waitlist spot",
-            preheader: "Confirm whether you want to leave the Vulnwatch waitlist.",
+            preheader: "Confirm whether you want to leave the GrayWard waitlist.",
             headingLead: "Leaving the",
             headingAccent: "waitlist?",
             bodyHtml:
                 VulnwatchEmailLayout.Paragraph(
-                    "We received a request to remove this email from the Vulnwatch waitlist.") +
+                    "We received a request to remove this email from the GrayWard waitlist.") +
                 VulnwatchEmailLayout.Paragraph(
                     "Nothing has changed yet. Open the confirmation page to decide.", last: true),
             buttonLabel: "Review cancellation",
